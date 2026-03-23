@@ -360,4 +360,139 @@ mod tests {
         println!("  Sweep complete. Results in results/d_scaling/");
         println!("{}", "=".repeat(90));
     }
+
+    // =========================================================================
+    // DIAGNOSTIC 1: Seed sensitivity at D=2048
+    // =========================================================================
+    fn eval_comp_with_seed(d: usize, seed: u64) -> (f32, f32, f32) {
+        let mut config = SemanticFieldConfig::new(d, BridgeStrategy::InputPreserving, NCPConfig::tiny());
+        config.alpha_override = Some(0.5);
+        let mut encoder = Encoder::new(d, seed);
+
+        let roles: Vec<String> = (0..4).map(|i| format!("role_{i}")).collect();
+        let values: Vec<String> = (0..4).map(|i| format!("val_{i}")).collect();
+        for r in &roles { encoder.register(r); }
+        for v in &values { encoder.register(v); }
+
+        let (mut t1, mut t3, mut t5, mut total) = (0u32, 0u32, 0u32, 0u32);
+        for (ri, role) in roles.iter().enumerate().take(3) {
+            for value in &values {
+                let mut sf = SemanticField::new(config.clone(), seed + ri as u64);
+                let rec = encoder.encode_record_named(&[(role, value)]).to_real();
+                for _ in 0..5 { sf.step(&rec, 0.1); }
+                let qr = sf.query(&encoder.encode_atom(role).unwrap().to_real());
+                let decoded = encoder.vocab().nearest_k(&qr.to_binary(), 5);
+                total += 1;
+                if !decoded.is_empty() && decoded[0].0 == *value { t1 += 1; }
+                if decoded.iter().take(3).any(|(l, _)| l == value) { t3 += 1; }
+                if decoded.iter().take(5).any(|(l, _)| l == value) { t5 += 1; }
+            }
+        }
+        let t = total as f32;
+        (t1 as f32 / t, t3 as f32 / t, t5 as f32 / t)
+    }
+
+    /// Pure HDC compositionality without SemanticField (zero steps).
+    fn eval_comp_pure_hdc(d: usize, seed: u64) -> (f32, f32) {
+        let mut encoder = Encoder::new(d, seed);
+        let roles: Vec<String> = (0..4).map(|i| format!("role_{i}")).collect();
+        let values: Vec<String> = (0..4).map(|i| format!("val_{i}")).collect();
+        for r in &roles { encoder.register(r); }
+        for v in &values { encoder.register(v); }
+
+        let (mut t1, mut total) = (0u32, 0u32);
+        // Also track real-space accuracy (no to_binary)
+        let mut t1_real = 0u32;
+        for role in roles.iter().take(3) {
+            for value in &values {
+                let rec = encoder.encode_record_named(&[(role, value)]);
+                let rec_r = rec.to_real();
+                let role_r = encoder.encode_atom(role).unwrap().to_real();
+                let qr = RealHV::bind(&rec_r, &role_r.inverse());
+
+                // Binary search
+                let decoded = encoder.vocab().nearest_k(&qr.to_binary(), 1);
+                total += 1;
+                if !decoded.is_empty() && decoded[0].0 == *value { t1 += 1; }
+
+                // Real search
+                let real_sims = encoder.vocab().all_similarities_real(&qr);
+                let best = real_sims.iter().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+                if let Some((w, _)) = best { if w == value { t1_real += 1; } }
+            }
+        }
+        let t = total as f32;
+        (t1 as f32 / t, t1_real as f32 / t)
+    }
+
+    #[test]
+    fn test_d_seed_sensitivity() {
+        println!("\n=== DIAGNOSTIC: Seed Sensitivity ===\n");
+
+        let mut csv = File::create("results/d_scaling/diagnosis_seed_sensitivity.csv").unwrap();
+        writeln!(csv, "D,seed,top1,top3,top5").unwrap();
+
+        for &d in &[1024usize, 2048, 4096, 8192] {
+            println!("  D={}", d);
+            for seed in 1042..1052 {
+                let (t1, t3, t5) = eval_comp_with_seed(d, seed);
+                println!("    seed={}: Top1={:.0}% Top3={:.0}% Top5={:.0}%", seed, t1*100.0, t3*100.0, t5*100.0);
+                writeln!(csv, "{},{},{:.4},{:.4},{:.4}", d, seed, t1, t3, t5).unwrap();
+            }
+            println!();
+        }
+    }
+
+    #[test]
+    fn test_d_binary_vs_real() {
+        println!("\n=== DIAGNOSTIC: Binary vs Real Search (Pure HDC, no dynamics) ===\n");
+
+        let mut csv = File::create("results/d_scaling/diagnosis_binary_vs_real.csv").unwrap();
+        writeln!(csv, "D,seed,binary_top1,real_top1").unwrap();
+
+        for &d in &[1024usize, 2048, 4096, 8192] {
+            println!("  D={}", d);
+            let mut avg_bin = 0.0f32;
+            let mut avg_real = 0.0f32;
+            let n_seeds = 10;
+            for seed in 1042..(1042 + n_seeds) {
+                let (bin, real) = eval_comp_pure_hdc(d, seed);
+                avg_bin += bin;
+                avg_real += real;
+                writeln!(csv, "{},{},{:.4},{:.4}", d, seed, bin, real).unwrap();
+            }
+            avg_bin /= n_seeds as f32;
+            avg_real /= n_seeds as f32;
+            println!("    Avg binary={:.1}% real={:.1}%", avg_bin*100.0, avg_real*100.0);
+        }
+    }
+
+    #[test]
+    fn test_d_scaling_multi_seed() {
+        println!("\n=== DIAGNOSTIC: Multi-Seed Scaling ===\n");
+
+        let mut csv = File::create("results/d_scaling/diagnosis_multi_seed.csv").unwrap();
+        writeln!(csv, "D,avg_top1,avg_top3,avg_top5,std_top1").unwrap();
+
+        for &d in &[1024usize, 2048, 4096, 6144, 8192] {
+            let n_seeds = 10u64;
+            let mut t1s = Vec::new();
+            let mut t3s = Vec::new();
+            let mut t5s = Vec::new();
+            for seed in 0..n_seeds {
+                let (t1, t3, t5) = eval_comp_with_seed(d, seed * 1000 + 42);
+                t1s.push(t1);
+                t3s.push(t3);
+                t5s.push(t5);
+            }
+            let avg1: f32 = t1s.iter().sum::<f32>() / n_seeds as f32;
+            let avg3: f32 = t3s.iter().sum::<f32>() / n_seeds as f32;
+            let avg5: f32 = t5s.iter().sum::<f32>() / n_seeds as f32;
+            let std1: f32 = (t1s.iter().map(|x| (x - avg1).powi(2)).sum::<f32>() / n_seeds as f32).sqrt();
+
+            println!("  D={:5}: Top1={:.1}%±{:.1}% Top3={:.1}% Top5={:.1}%",
+                d, avg1*100.0, std1*100.0, avg3*100.0, avg5*100.0);
+            writeln!(csv, "{},{:.4},{:.4},{:.4},{:.4}", d, avg1, avg3, avg5, std1).unwrap();
+        }
+    }
 }
