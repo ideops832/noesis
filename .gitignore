@@ -1,0 +1,16 @@
+/target
+*.swp
+*.swo
+*~
+.DS_Store
+.bash_profile
+.bashrc
+.profile
+.zprofile
+.zshrc
+.gitconfig
+.mcp.json
+.ripgreprc
+.idea/
+.vscode/
+.claude/

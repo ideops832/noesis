@@ -1,0 +1,4 @@
+turn,input,sim_to_turn1,sim_to_turn2,sim_to_turn3,state_norm
+1,"Il gatto dorme sul divano",1.000000,,,1.000000
+2,"Il felino si sveglia e mangia",0.116389,0.994956,,1.000001
+3,"L'animale gioca con la palla",-0.015193,0.021289,0.993959,1.000000

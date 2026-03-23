@@ -1,0 +1,6 @@
+a,b,c,expected,rank1_word,rank1_sim,rank2_word,rank2_sim,rank3_word,rank3_sim,hit
+gatto,felino,cane,["cucciolo"],mobile,0.671636,altro,0.671181,bambina,0.575955,false
+gatto,dorme,cane,["dorme", "corre", "gioca"],bambole,0.811185,merenda,0.712246,bambina,0.693393,false
+mamma,cucina,papà,["cucina", "prepara", "gioca"],casa,0.689143,accompagna,0.687360,sorella,0.660864,false
+gatto,divano,cane,["parco", "cortile"],giovane,0.686235,cortile,0.679006,lento,0.677042,true
+gatto,micio,cane,["cucciolo"],bambina,0.660104,impara,0.659737,scrivere,0.659183,false

@@ -1,0 +1,11 @@
+type,sentence_a,sentence_b,similarity
+similar,"Il gatto mangia il pesce","Il felino mangia il pesce",0.553487
+similar,"Il cane corre nel parco","Il cucciolo corre nel parco",0.612201
+similar,"La mamma cucina la cena","La madre prepara la cena",0.240373
+similar,"Il bambino gioca nel giardino","Il bambino gioca nel cortile",0.570414
+similar,"Il sole splende nel cielo","Il sole brilla nel cielo",0.354858
+different,"Il gatto mangia il pesce","Il treno parte dalla stazione",0.007943
+different,"Il cane corre nel parco","La pasta cuoce nella pentola",0.012207
+different,"La mamma cucina la cena","Il vento soffia tra gli alberi",-0.018430
+different,"Il bambino gioca nel giardino","Il lavoratore arriva in ufficio",-0.007789
+different,"Il sole splende nel cielo","Il gatto dorme sul divano",-0.005124
