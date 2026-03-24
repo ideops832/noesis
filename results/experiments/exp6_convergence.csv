@@ -1,0 +1,16 @@
+word,category,sim_to_centroid
+gatto,ANIMALI,0.747216
+cane,ANIMALI,0.739117
+uccello,ANIMALI,0.475806
+pesce,ANIMALI,0.390251
+cavallo,ANIMALI,0.364657
+pasta,CIBO,0.460543
+pane,CIBO,0.788774
+torta,CIBO,0.500891
+gelato,CIBO,0.778599
+pizza,CIBO,0.761064
+sole,NATURA,0.457068
+pioggia,NATURA,0.440694
+vento,NATURA,0.468974
+neve,NATURA,0.438464
+mare,NATURA,0.431665

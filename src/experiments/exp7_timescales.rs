@@ -1,165 +1,276 @@
-//! Experiment 7: Emergent timescales.
+//! Experiment 7: Emergent timescales in multi-scale semantic fields.
 //!
-//! Runs an NCP network with varying input over multiple steps and records
-//! the effective time constants (gate values) at each step. Verifies that
-//! different neurons develop different effective time constants, showing
-//! emergent temporal specialization.
+//! Processes themed sentence sequences through a MultiScaleField,
+//! tracking fast/slow/combined state similarities to theme centroids.
+//! Compares multi-scale vs single-scale retention of early inputs.
 
 #[cfg(test)]
 mod tests {
-    use crate::lnn::ncp::{NCP, NCPConfig};
-    use rand::rngs::StdRng;
-    use rand::SeedableRng;
+    use std::fs::File;
+    use std::io::Write;
+
+    use crate::hdc::hypervector::HyperVector;
+    use crate::hdc::real::RealHV;
+    use crate::language::composer::Composer;
+    use crate::language::tokenizer::Tokenizer;
+    use crate::lnn::ncp::NCPConfig;
+    use crate::noesis::bridge::BridgeStrategy;
+    use crate::noesis::multiscale::{MultiScaleConfig, MultiScaleField};
+    use crate::noesis::semantic_field::{SemanticField, SemanticFieldConfig};
+    use crate::utils::corpus;
+
+    const D: usize = 1024;
 
     #[test]
-    fn test_exp7_timescales() {
-        println!("\n=== Experiment 7: Emergent Timescales ===\n");
+    fn test_exp7_research() {
+        println!("\n=== Experiment 7: Emergent Timescales (Expanded) ===\n");
 
-        let mut rng = StdRng::seed_from_u64(42);
-        let config = NCPConfig::tiny(); // 8->4->4->4
-        let mut ncp = NCP::new(config, &mut rng);
+        // ------------------------------------------------------------------
+        // 1. Create MultiScaleField with default config, D=1024
+        // ------------------------------------------------------------------
+        let ms_config = MultiScaleConfig::default_for_dim(D);
+        let mut ms_field = MultiScaleField::new(ms_config.clone(), 42);
 
-        println!("NCP architecture: {}", ncp.summary());
+        // ------------------------------------------------------------------
+        // 2. Create Composer with trained vocab
+        // ------------------------------------------------------------------
+        let tokenizer = Tokenizer::new();
+        let expanded = corpus::expanded_corpus();
+        let expanded_sents: Vec<Vec<String>> = expanded
+            .iter()
+            .map(|s| tokenizer.tokenize(s.as_str()))
+            .collect();
 
-        let dt = 0.1;
-        let n_steps = 50;
+        let mut composer = Composer::new(D, 42);
+        for s in &expanded_sents {
+            for w in s {
+                composer.vocabulary.get_or_create(w);
+            }
+        }
+        for _ in 0..3 {
+            composer.vocabulary.learn_from_context(&expanded_sents, 3);
+        }
+        println!("  Vocab trained: {} words", composer.vocabulary.len());
 
-        // Record tau values at each step
-        let mut all_inter_taus: Vec<Vec<f32>> = Vec::new();
-        let mut all_command_taus: Vec<Vec<f32>> = Vec::new();
-        let mut all_motor_taus: Vec<Vec<f32>> = Vec::new();
+        // ------------------------------------------------------------------
+        // 3. Define 20 sentences with topic changes
+        // ------------------------------------------------------------------
+        let themes: Vec<(&str, Vec<&str>)> = vec![
+            ("animals", vec![
+                "il gatto dorme",
+                "il cane corre",
+                "il cavallo salta",
+                "il pesce nuota",
+                "il uccello vola",
+            ]),
+            ("food", vec![
+                "la pasta cuoce",
+                "il cuoco prepara",
+                "il pane lievita",
+                "la torta cuoce",
+                "il gelato si scioglie",
+            ]),
+            ("work", vec![
+                "il programmatore scrive",
+                "il dottore visita",
+                "il maestro insegna",
+                "il direttore decide",
+                "il ricercatore studia",
+            ]),
+            ("nature", vec![
+                "il sole splende",
+                "la pioggia cade",
+                "il vento soffia",
+                "la neve fiocca",
+                "il mare ondeggia",
+            ]),
+        ];
 
-        println!("\n--- Running {} steps with varying input ---", n_steps);
+        // Flatten all sentences in order
+        let all_sentences: Vec<(&str, &str)> = themes
+            .iter()
+            .flat_map(|(theme, sents)| sents.iter().map(move |&s| (*theme, s)))
+            .collect();
+        assert_eq!(all_sentences.len(), 20);
 
-        for step in 0..n_steps {
-            // Varying input: sinusoidal at different frequencies
-            let t = step as f32 * dt;
-            let input: Vec<f32> = (0..8)
-                .map(|i| {
-                    let freq = 1.0 + i as f32 * 0.5;
-                    (t * freq * std::f32::consts::PI * 2.0).sin()
-                })
+        // Encode all sentences
+        let encoded_sentences: Vec<(&str, &str, RealHV)> = all_sentences
+            .iter()
+            .filter_map(|&(theme, sent)| {
+                composer.encode_sentence(sent).map(|hv| (theme, sent, hv))
+            })
+            .collect();
+
+        // ------------------------------------------------------------------
+        // Compute theme centroids (bundle of theme sentences' encodings)
+        // ------------------------------------------------------------------
+        let theme_names: Vec<&str> = themes.iter().map(|(n, _)| *n).collect();
+        let mut theme_centroids: Vec<(&str, RealHV)> = Vec::new();
+        for &tn in &theme_names {
+            let hvs: Vec<&RealHV> = encoded_sentences
+                .iter()
+                .filter(|(t, _, _)| *t == tn)
+                .map(|(_, _, hv)| hv)
                 .collect();
+            if !hvs.is_empty() {
+                let centroid = RealHV::bundle_normalized(&hvs);
+                theme_centroids.push((tn, centroid));
+            }
+        }
+        println!("  Theme centroids computed: {}", theme_centroids.len());
 
-            // Step the NCP
-            let _output = ncp.step(&input, dt);
+        // ------------------------------------------------------------------
+        // 4. Process sentences, record fast/slow/combined state similarities
+        // ------------------------------------------------------------------
+        struct ThemeTrackRow {
+            step: usize,
+            theme: String,
+            fast_sim: f32,
+            slow_sim: f32,
+            combined_sim: f32,
+        }
 
-            // Record effective time constants
-            let tau = ncp.get_effective_tau(&input);
-            all_inter_taus.push(tau.inter.clone());
-            all_command_taus.push(tau.command.clone());
-            all_motor_taus.push(tau.motor.clone());
+        let mut tracking: Vec<ThemeTrackRow> = Vec::new();
 
-            if step % 10 == 0 {
-                println!(
-                    "  Step {:3}: inter_tau = [{:.2}, {:.2}, {:.2}, {:.2}]",
-                    step, tau.inter[0], tau.inter[1], tau.inter[2], tau.inter[3]
-                );
-                println!(
-                    "           cmd_tau   = [{:.2}, {:.2}, {:.2}, {:.2}]",
-                    tau.command[0], tau.command[1], tau.command[2], tau.command[3]
-                );
-                println!(
-                    "           motor_tau = [{:.2}, {:.2}, {:.2}, {:.2}]",
-                    tau.motor[0], tau.motor[1], tau.motor[2], tau.motor[3]
-                );
+        // Also record the encoding of sentence 1 for retention test
+        let sentence1_hv = encoded_sentences.first().map(|(_, _, hv)| hv.clone());
+
+        for (step, (theme, sent, hv)) in encoded_sentences.iter().enumerate() {
+            ms_field.step(hv);
+
+            // Record similarities to each theme centroid
+            for (tn, centroid) in &theme_centroids {
+                let fast_sim = RealHV::cosine_similarity(ms_field.fast_state(), centroid);
+                let slow_sim = RealHV::cosine_similarity(ms_field.slow_state(), centroid);
+                let combined_sim = RealHV::cosine_similarity(ms_field.combined_state(), centroid);
+
+                tracking.push(ThemeTrackRow {
+                    step: step + 1,
+                    theme: tn.to_string(),
+                    fast_sim,
+                    slow_sim,
+                    combined_sim,
+                });
+            }
+
+            if step % 5 == 0 || step == 19 {
+                println!("  Step {:2} [{}] \"{}\"", step + 1, theme, sent);
+                println!("    fast->current_theme:  {:.4}",
+                    RealHV::cosine_similarity(ms_field.fast_state(),
+                        &theme_centroids.iter().find(|(t, _)| t == theme).unwrap().1));
+                println!("    slow->current_theme:  {:.4}",
+                    RealHV::cosine_similarity(ms_field.slow_state(),
+                        &theme_centroids.iter().find(|(t, _)| t == theme).unwrap().1));
             }
         }
 
-        // Analyze: compute mean and std of tau for each neuron across time
-        println!("\n--- Time Constant Statistics (across {} steps) ---", n_steps);
-
-        let compute_stats = |taus: &[Vec<f32>], name: &str| -> (Vec<f32>, Vec<f32>) {
-            let n_neurons = taus[0].len();
-            let mut means = vec![0.0f32; n_neurons];
-            let mut stds = vec![0.0f32; n_neurons];
-
-            for neuron in 0..n_neurons {
-                let values: Vec<f32> = taus.iter().map(|t| t[neuron]).collect();
-                let mean = values.iter().sum::<f32>() / values.len() as f32;
-                let var = values.iter().map(|v| (v - mean).powi(2)).sum::<f32>() / values.len() as f32;
-                means[neuron] = mean;
-                stds[neuron] = var.sqrt();
-            }
-
-            println!("\n  {} layer:", name);
-            for neuron in 0..n_neurons {
-                println!(
-                    "    Neuron {}: mean_tau = {:8.2}, std_tau = {:8.2}",
-                    neuron, means[neuron], stds[neuron]
-                );
-            }
-
-            (means, stds)
-        };
-
-        let (inter_means, _) = compute_stats(&all_inter_taus, "Inter");
-        let (command_means, _) = compute_stats(&all_command_taus, "Command");
-        let (motor_means, _) = compute_stats(&all_motor_taus, "Motor");
-
-        // Check that neurons show different effective time constants
-        // Compute the range (max - min) of mean taus within each layer
-        let range = |means: &[f32]| -> f32 {
-            let min = means.iter().cloned().fold(f32::INFINITY, f32::min);
-            let max = means.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
-            max - min
-        };
-
-        let inter_range = range(&inter_means);
-        let command_range = range(&command_means);
-        let motor_range = range(&motor_means);
-
-        println!("\n--- Tau Range (max - min of mean tau) ---");
-        println!("  Inter range:   {:.2}", inter_range);
-        println!("  Command range: {:.2}", command_range);
-        println!("  Motor range:   {:.2}", motor_range);
-
-        // Verify that at least one layer shows differentiation in time constants
-        let total_range = inter_range + command_range + motor_range;
-        println!("  Total range:   {:.2}", total_range);
-
-        // All tau values should be finite and positive
-        let all_finite = all_inter_taus.iter().chain(&all_command_taus).chain(&all_motor_taus)
-            .all(|taus| taus.iter().all(|t| t.is_finite() && *t > 0.0));
-        assert!(
-            all_finite,
-            "All tau values should be finite and positive"
-        );
-
-        // At least some differentiation should exist (different neurons = different taus)
-        // Even with random initialization, neurons should not all be identical
-        assert!(
-            total_range > 0.0,
-            "Neurons should show some differentiation in time constants (total range = {:.4})",
-            total_range
-        );
-
-        println!("\n[PASS] Neurons show differentiated time constants (total range = {:.2})", total_range);
-
-        // --- CSV Export ---
-        use std::fs::File;
-        use std::io::Write;
+        // ------------------------------------------------------------------
+        // 5. Record NCP effective tau (using a SemanticField with NCP access)
+        // ------------------------------------------------------------------
+        println!("\n--- NCP Effective Tau Sampling ---");
         {
-            let mut csv_file = File::create("results/exp7_timescales.csv")
-                .expect("Failed to create results/exp7_timescales.csv");
-            writeln!(csv_file, "step,layer,neuron,tau_value").unwrap();
-            for (step, taus) in all_inter_taus.iter().enumerate() {
-                for (neuron, tau) in taus.iter().enumerate() {
-                    writeln!(csv_file, "{},inter,{},{:.6}", step, neuron, tau).unwrap();
+            // Create a separate NCP-based field to probe tau values
+            use crate::lnn::ncp::NCP;
+            use rand::rngs::StdRng;
+            use rand::SeedableRng;
+
+            let ncp_config = NCPConfig::tiny();
+            let mut rng = StdRng::seed_from_u64(42);
+            let mut ncp = NCP::new(ncp_config, &mut rng);
+
+            // Feed a few representative inputs and report tau
+            let dt = 0.1;
+            for (step, (_, _, hv)) in encoded_sentences.iter().enumerate() {
+                // Use first 8 dimensions as a proxy input for the tiny NCP
+                let input: Vec<f32> = hv.data.iter().take(8).cloned().collect();
+                let _output = ncp.step(&input, dt);
+                let tau = ncp.get_effective_tau(&input);
+
+                if step % 5 == 0 {
+                    println!(
+                        "  Step {:2}: inter_tau=[{:.2},{:.2},{:.2},{:.2}]  cmd_tau=[{:.2},{:.2},{:.2},{:.2}]",
+                        step + 1,
+                        tau.inter[0], tau.inter[1], tau.inter[2], tau.inter[3],
+                        tau.command[0], tau.command[1], tau.command[2], tau.command[3],
+                    );
                 }
             }
-            for (step, taus) in all_command_taus.iter().enumerate() {
-                for (neuron, tau) in taus.iter().enumerate() {
-                    writeln!(csv_file, "{},command,{},{:.6}", step, neuron, tau).unwrap();
-                }
-            }
-            for (step, taus) in all_motor_taus.iter().enumerate() {
-                for (neuron, tau) in taus.iter().enumerate() {
-                    writeln!(csv_file, "{},motor,{},{:.6}", step, neuron, tau).unwrap();
-                }
-            }
-            println!("CSV saved to results/exp7_timescales.csv");
         }
+
+        // ------------------------------------------------------------------
+        // 6. Multi-scale vs single-scale retention comparison
+        // ------------------------------------------------------------------
+        println!("\n--- Multi-scale vs Single-scale Retention ---");
+
+        let s1_hv = match &sentence1_hv {
+            Some(hv) => hv.clone(),
+            None => panic!("Sentence 1 encoding missing"),
+        };
+
+        // Multi-scale: slow field trace of sentence 1 after all 20 sentences
+        let multi_retention = RealHV::cosine_similarity(ms_field.slow_state(), &s1_hv);
+        println!("  Multi-scale slow field -> sentence 1: {:.4}", multi_retention);
+
+        // Single-scale: fresh SemanticField, process all 20 sentences
+        let sf_config = SemanticFieldConfig::new(D, BridgeStrategy::InputPreserving, NCPConfig::tiny());
+        let mut single_field = SemanticField::new(sf_config, 42);
+        for (_, _, hv) in &encoded_sentences {
+            single_field.step(hv, 0.2); // same dt as fast field
+        }
+        let single_retention = RealHV::cosine_similarity(single_field.state(), &s1_hv);
+        println!("  Single field -> sentence 1: {:.4}", single_retention);
+
+        println!("  Retention advantage (multi - single): {:.4}", multi_retention - single_retention);
+
+        // ------------------------------------------------------------------
+        // 7. Save CSV files
+        // ------------------------------------------------------------------
+        std::fs::create_dir_all("results/experiments").ok();
+
+        // exp7_theme_tracking.csv
+        {
+            let mut f = File::create("results/experiments/exp7_theme_tracking.csv")
+                .expect("create exp7_theme_tracking.csv");
+            writeln!(f, "step,theme,fast_sim,slow_sim,combined_sim").unwrap();
+            for row in &tracking {
+                writeln!(
+                    f,
+                    "{},{},{:.6},{:.6},{:.6}",
+                    row.step, row.theme, row.fast_sim, row.slow_sim, row.combined_sim
+                )
+                .unwrap();
+            }
+            println!("\n  CSV saved: results/experiments/exp7_theme_tracking.csv");
+        }
+
+        // exp7_scale_comparison.csv
+        {
+            let mut f = File::create("results/experiments/exp7_scale_comparison.csv")
+                .expect("create exp7_scale_comparison.csv");
+            writeln!(f, "field_type,sentence1_retention").unwrap();
+            writeln!(f, "multi_slow,{:.6}", multi_retention).unwrap();
+            writeln!(f, "single,{:.6}", single_retention).unwrap();
+            println!("  CSV saved: results/experiments/exp7_scale_comparison.csv");
+        }
+
+        // ------------------------------------------------------------------
+        // 8. Assertions
+        // ------------------------------------------------------------------
+        assert!(
+            multi_retention > single_retention,
+            "Slow field should retain sentence 1 better than single: multi={:.4} single={:.4}",
+            multi_retention, single_retention
+        );
+        println!("\n  [PASS] Multi-scale slow field retains sentence 1 better than single field");
+
+        // Summary
+        println!("\n{}", "=".repeat(60));
+        println!("  SUMMARY — Experiment 7: Emergent Timescales");
+        println!("{}", "=".repeat(60));
+        println!("  Multi-scale slow retention: {:.4}", multi_retention);
+        println!("  Single-scale retention:     {:.4}", single_retention);
+        println!("  Advantage:                  {:.4}", multi_retention - single_retention);
+        println!("{}", "=".repeat(60));
 
         println!("\n=== Experiment 7 Complete ===\n");
     }

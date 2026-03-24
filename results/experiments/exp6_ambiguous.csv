@@ -1,0 +1,4 @@
+input,category_centroid,similarity
+gatto+pasta,ANIMALI,0.542104
+gatto+pasta,CIBO,0.369305
+gatto+pasta,NATURA,0.078641

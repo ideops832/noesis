@@ -16,7 +16,7 @@ D,metric,value
 1024,sentence_dif,-0.0085
 1024,consistency,1.0000
 1024,max_random_sim,0.1250
-1024,step_us,2362.8
+1024,step_us,1715.5
 1024,capacity_10,1.0000
 2048,comp_top1,1.0000
 2048,comp_top3,1.0000
@@ -35,7 +35,7 @@ D,metric,value
 2048,sentence_dif,0.0223
 2048,consistency,1.0000
 2048,max_random_sim,0.0918
-2048,step_us,3498.3
+2048,step_us,9166.7
 2048,capacity_10,1.0000
 4096,comp_top1,1.0000
 4096,comp_top3,1.0000
@@ -54,7 +54,7 @@ D,metric,value
 4096,sentence_dif,0.0246
 4096,consistency,1.0000
 4096,max_random_sim,0.0649
-4096,step_us,16586.1
+4096,step_us,7463.9
 4096,capacity_10,1.0000
 8192,comp_top1,1.0000
 8192,comp_top3,1.0000
@@ -73,5 +73,5 @@ D,metric,value
 8192,sentence_dif,0.0134
 8192,consistency,1.0000
 8192,max_random_sim,0.0493
-8192,step_us,14561.7
+8192,step_us,50743.2
 8192,capacity_10,1.0000

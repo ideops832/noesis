@@ -1,88 +1,207 @@
 //! Experiment 2: Emergent syntactic structure.
 //!
-//! Tests whether sentence encoding preserves meaning similarity:
-//! pairs of sentences with similar meaning (but different structure)
-//! should have higher cosine similarity than pairs with different meaning.
+//! Expanded protocol:
+//! 1. Word order sensitivity: same words in different order yield different encodings
+//! 2. Negation sensitivity: "X does Y" vs "X does not Y"
+//! 3. Structure vs meaning: same SVO structure, different semantics
+//! 4. Export CSV results to results/experiments/
 
 #[cfg(test)]
 mod tests {
     use std::fs::File;
     use std::io::Write;
 
+    use crate::hdc::hypervector::HyperVector;
+    use crate::hdc::real::RealHV;
+    use crate::language::tokenizer::Tokenizer;
+    use crate::language::vocabulary::Vocabulary;
     use crate::language::composer::Composer;
+    use crate::utils::corpus;
 
     const D: usize = 1024;
 
     #[test]
-    fn test_exp2_syntax() {
-        println!("\n=== Experiment 2: Syntactic Structure ===\n");
+    fn test_exp2_research() {
+        println!("\n{}", "=".repeat(60));
+        println!("=== Experiment 2: Syntactic Structure — Expanded Protocol ===");
+        println!("{}\n", "=".repeat(60));
+
+        // ── 1. Build trained composer ──────────────────────────────────────
+        println!("--- Phase 1: Build trained composer ---");
+
+        let tokenizer = Tokenizer::new();
+        let mut full_corpus = corpus::expanded_corpus();
+        full_corpus.extend(corpus::synonym_parallel_corpus());
+        let sentences: Vec<Vec<String>> = full_corpus.iter().map(|s| tokenizer.tokenize(s)).collect();
 
         let mut composer = Composer::new(D, 42);
+        // Pre-populate vocabulary
+        for sentence in &sentences {
+            for word in sentence {
+                composer.vocabulary.get_or_create(word);
+            }
+        }
+        // Train with momentum
+        for _ in 0..3 {
+            composer.vocabulary.learn_from_context_momentum(&sentences, 3, 0.7);
+        }
+        println!("  Vocab: {} words, 3 passes momentum=0.7\n", composer.vocabulary.len());
 
-        // Pairs with similar meaning (paraphrases / near-synonymous)
-        let similar_pairs = vec![
-            ("Il gatto mangia il pesce", "Il felino mangia il pesce"),
-            ("Il cane corre nel parco", "Il cucciolo corre nel parco"),
-            ("La mamma cucina la cena", "La madre prepara la cena"),
-            ("Il bambino gioca nel giardino", "Il bambino gioca nel cortile"),
-            ("Il sole splende nel cielo", "Il sole brilla nel cielo"),
+        // ── 2. Word order test ─────────────────────────────────────────────
+        println!("--- Phase 2: Word order sensitivity ---\n");
+
+        let word_order_pairs: Vec<(&str, &str)> = vec![
+            ("gatto mangia topo", "topo mangia gatto"),
+            ("cane insegue gatto", "gatto insegue cane"),
+            ("mamma chiama bambino", "bambino chiama mamma"),
+            ("sole scalda terra", "terra scalda sole"),
+            ("vento muove nuvola", "nuvola muove vento"),
+            ("pesce nuota mare", "mare nuota pesce"),
+            ("uccello canta albero", "albero canta uccello"),
+            ("cuoco prepara cena", "cena prepara cuoco"),
+            ("nonno racconta storia", "storia racconta nonno"),
+            ("fratello aiuta sorella", "sorella aiuta fratello"),
         ];
 
-        // Pairs with different meaning
-        let different_pairs = vec![
-            ("Il gatto mangia il pesce", "Il treno parte dalla stazione"),
-            ("Il cane corre nel parco", "La pasta cuoce nella pentola"),
-            ("La mamma cucina la cena", "Il vento soffia tra gli alberi"),
-            ("Il bambino gioca nel giardino", "Il lavoratore arriva in ufficio"),
-            ("Il sole splende nel cielo", "Il gatto dorme sul divano"),
+        struct PairResult {
+            a: String,
+            b: String,
+            similarity: f32,
+        }
+
+        let mut wo_results: Vec<PairResult> = Vec::new();
+
+        println!("  {:35} | {:35} | {:>8}", "Sentence A", "Sentence B", "Sim");
+        println!("  {:-<35}-+-{:-<35}-+-{:-<8}", "", "", "");
+
+        for (a, b) in &word_order_pairs {
+            let sim = composer.sentence_similarity(a, b);
+            println!("  {:35} | {:35} | {:>8.4}", a, b, sim);
+            wo_results.push(PairResult { a: a.to_string(), b: b.to_string(), similarity: sim });
+        }
+
+        let avg_wo: f32 = wo_results.iter().map(|r| r.similarity).sum::<f32>() / wo_results.len() as f32;
+        println!("\n  Average word-order similarity: {:.4}", avg_wo);
+
+        // ── 3. Negation test ───────────────────────────────────────────────
+        println!("\n--- Phase 3: Negation sensitivity ---\n");
+
+        let negation_pairs: Vec<(&str, &str)> = vec![
+            ("gatto dorme", "gatto non dorme"),
+            ("cane mangia", "cane non mangia"),
+            ("bambino gioca", "bambino non gioca"),
+            ("sole splende", "sole non splende"),
+            ("pioggia cade", "pioggia non cade"),
         ];
 
-        println!("--- Similar Meaning Pairs ---");
-        let mut sim_scores = Vec::new();
-        for (a, b) in &similar_pairs {
+        let mut neg_results: Vec<PairResult> = Vec::new();
+
+        println!("  {:25} | {:25} | {:>8}", "Affirmative", "Negative", "Sim");
+        println!("  {:-<25}-+-{:-<25}-+-{:-<8}", "", "", "");
+
+        for (a, b) in &negation_pairs {
             let sim = composer.sentence_similarity(a, b);
-            sim_scores.push(sim);
-            println!("  {:.4}  \"{}\" vs \"{}\"", sim, a, b);
+            println!("  {:25} | {:25} | {:>8.4}", a, b, sim);
+            neg_results.push(PairResult { a: a.to_string(), b: b.to_string(), similarity: sim });
         }
-        let avg_similar: f32 = sim_scores.iter().sum::<f32>() / sim_scores.len() as f32;
 
-        println!("\n--- Different Meaning Pairs ---");
-        let mut diff_scores = Vec::new();
-        for (a, b) in &different_pairs {
+        let avg_neg: f32 = neg_results.iter().map(|r| r.similarity).sum::<f32>() / neg_results.len() as f32;
+        println!("\n  Average negation similarity: {:.4}", avg_neg);
+        println!("  (High similarity expected: 'non' is just one extra token)");
+
+        // ── 4. Structure vs meaning ────────────────────────────────────────
+        println!("\n--- Phase 4: Structure vs meaning ---\n");
+
+        let structure_pairs: Vec<(&str, &str)> = vec![
+            ("gatto mangia topo", "sole scalda terra"),
+            ("cane corre parco", "pioggia bagna strada"),
+            ("mamma cucina cena", "vento muove nuvola"),
+            ("bambino gioca palla", "treno parte stazione"),
+            ("pesce nuota mare", "uccello vola cielo"),
+            ("nonno racconta storia", "cuoco prepara torta"),
+            ("fratello legge libro", "neve copre montagna"),
+            ("gatto dorme divano", "luna illumina notte"),
+            ("cane beve acqua", "sole tramonta sera"),
+            ("bambino ride forte", "pioggia cade piano"),
+        ];
+
+        let mut sm_results: Vec<PairResult> = Vec::new();
+
+        println!("  {:30} | {:30} | {:>8}", "Sentence A", "Sentence B", "Sim");
+        println!("  {:-<30}-+-{:-<30}-+-{:-<8}", "", "", "");
+
+        for (a, b) in &structure_pairs {
             let sim = composer.sentence_similarity(a, b);
-            diff_scores.push(sim);
-            println!("  {:.4}  \"{}\" vs \"{}\"", sim, a, b);
+            println!("  {:30} | {:30} | {:>8.4}", a, b, sim);
+            sm_results.push(PairResult { a: a.to_string(), b: b.to_string(), similarity: sim });
         }
-        let avg_different: f32 = diff_scores.iter().sum::<f32>() / diff_scores.len() as f32;
 
-        println!("\n--- Summary ---");
-        println!("  Average similarity (similar meaning):    {:.4}", avg_similar);
-        println!("  Average similarity (different meaning):  {:.4}", avg_different);
-        println!("  Difference:                              {:.4}", avg_similar - avg_different);
+        let avg_sm: f32 = sm_results.iter().map(|r| r.similarity).sum::<f32>() / sm_results.len() as f32;
+        println!("\n  Average structure-vs-meaning similarity: {:.4}", avg_sm);
 
-        // --- CSV Export ---
+        // ── 5. Summary table ───────────────────────────────────────────────
+        println!("\n--- Phase 5: Summary ---\n");
+        println!("  {:30} | {:>10} | {:>10}", "Sub-test", "Avg Sim", "N pairs");
+        println!("  {:-<30}-+-{:-<10}-+-{:-<10}", "", "", "");
+        println!("  {:30} | {:>10.4} | {:>10}", "Word order (reversed SVO)", avg_wo, wo_results.len());
+        println!("  {:30} | {:>10.4} | {:>10}", "Negation (X vs not X)", avg_neg, neg_results.len());
+        println!("  {:30} | {:>10.4} | {:>10}", "Structure vs meaning", avg_sm, sm_results.len());
+
+        // ── 6. Save CSVs ──────────────────────────────────────────────────
+        println!("\n--- Phase 6: Saving CSV results ---");
+
+        // exp2_word_order.csv
         {
-            let mut f = File::create("results/exp2_syntax.csv")
-                .expect("Failed to create exp2_syntax.csv");
-            writeln!(f, "type,sentence_a,sentence_b,similarity").unwrap();
-            for ((a, b), sim) in similar_pairs.iter().zip(sim_scores.iter()) {
-                writeln!(f, "similar,\"{}\",\"{}\",{:.6}", a, b, sim).unwrap();
+            let mut f = File::create("results/experiments/exp2_word_order.csv")
+                .expect("Failed to create exp2_word_order.csv");
+            writeln!(f, "sentence_a,sentence_b,similarity").unwrap();
+            for r in &wo_results {
+                writeln!(f, "\"{}\",\"{}\",{:.6}", r.a, r.b, r.similarity).unwrap();
             }
-            for ((a, b), sim) in different_pairs.iter().zip(diff_scores.iter()) {
-                writeln!(f, "different,\"{}\",\"{}\",{:.6}", a, b, sim).unwrap();
-            }
+            println!("  Saved results/experiments/exp2_word_order.csv");
         }
 
-        println!("\n[CSV] Saved results/exp2_syntax.csv");
+        // exp2_negation.csv
+        {
+            let mut f = File::create("results/experiments/exp2_negation.csv")
+                .expect("Failed to create exp2_negation.csv");
+            writeln!(f, "affirmative,negative,similarity").unwrap();
+            for r in &neg_results {
+                writeln!(f, "\"{}\",\"{}\",{:.6}", r.a, r.b, r.similarity).unwrap();
+            }
+            println!("  Saved results/experiments/exp2_negation.csv");
+        }
 
+        // exp2_structure_vs_meaning.csv
+        {
+            let mut f = File::create("results/experiments/exp2_structure_vs_meaning.csv")
+                .expect("Failed to create exp2_structure_vs_meaning.csv");
+            writeln!(f, "sentence_a,sentence_b,similarity").unwrap();
+            for r in &sm_results {
+                writeln!(f, "\"{}\",\"{}\",{:.6}", r.a, r.b, r.similarity).unwrap();
+            }
+            println!("  Saved results/experiments/exp2_structure_vs_meaning.csv");
+        }
+
+        // ── 7. Assertions ─────────────────────────────────────────────────
+        println!("\n--- Phase 7: Assertions ---");
+
+        println!("  Word order avg similarity: {:.4} (threshold < 0.7)", avg_wo);
         assert!(
-            avg_similar > avg_different,
-            "Similar-meaning pairs ({:.4}) should have higher avg similarity than different-meaning pairs ({:.4})",
-            avg_similar,
-            avg_different
+            avg_wo < 0.7,
+            "Average word-order similarity ({:.4}) should be < 0.7 (word order matters)",
+            avg_wo
         );
+        println!("  [PASS] Word order sensitivity: avg={:.4} < 0.7", avg_wo);
 
-        println!("\n[PASS] avg_similar ({:.4}) > avg_different ({:.4})", avg_similar, avg_different);
+        println!("  Structure-vs-meaning avg similarity: {:.4} (threshold < 0.3)", avg_sm);
+        assert!(
+            avg_sm < 0.3,
+            "Average structure-vs-meaning similarity ({:.4}) should be < 0.3 (different semantics)",
+            avg_sm
+        );
+        println!("  [PASS] Structure vs meaning: avg={:.4} < 0.3", avg_sm);
+
         println!("\n=== Experiment 2 Complete ===\n");
     }
 }

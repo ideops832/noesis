@@ -1,8 +1,11 @@
-//! Experiment 1: Emergent semantic similarity.
+//! Experiment 1: Semantic similarity via distributional learning.
 //!
-//! Builds a vocabulary from the Italian corpus using distributional learning
-//! and verifies that words appearing in similar contexts become more similar
-//! in hypervector space.
+//! Expanded protocol:
+//! 1. Train vocabulary on expanded + synonym-parallel corpus (5 passes, momentum=0.7, window=3)
+//! 2. Measure intra- vs inter-cluster similarity across 5 semantic groups
+//! 3. Compare trained vs random baseline
+//! 4. Corpus scaling analysis (100, 300, 1000, 3000, all sentences)
+//! 5. Export CSV results to results/experiments/
 
 #[cfg(test)]
 mod tests {
@@ -10,195 +13,240 @@ mod tests {
     use std::io::Write;
 
     use crate::hdc::hypervector::HyperVector;
+    use crate::hdc::real::RealHV;
     use crate::language::tokenizer::Tokenizer;
     use crate::language::vocabulary::Vocabulary;
-    use crate::utils::corpus::italian_corpus;
+    use crate::language::composer::Composer;
+    use crate::utils::corpus;
 
     const D: usize = 1024;
 
-    #[test]
-    fn test_exp1_similarity() {
-        println!("\n=== Experiment 1: Semantic Similarity Emergence ===\n");
-
-        let tokenizer = Tokenizer::new();
-        let corpus = italian_corpus();
-        println!("Corpus size: {} sentences", corpus.len());
-
-        // Tokenize corpus
-        let sentences: Vec<Vec<String>> = corpus
-            .iter()
-            .map(|s| tokenizer.tokenize(s))
-            .collect();
-
-        // Build vocabulary with distributional learning
+    /// Helper: build a trained vocabulary from the given sentences with momentum learning.
+    fn build_trained_vocab(sentences: &[Vec<String>], passes: usize, momentum: f32, window: usize) -> Vocabulary {
         let mut vocab = Vocabulary::new(D, 42);
-
-        // Ensure all words exist first
-        for sentence in &sentences {
+        for sentence in sentences {
             for word in sentence {
                 vocab.get_or_create(word);
             }
         }
-        println!("Vocabulary size: {} words", vocab.len());
-
-        // 3 passes of contextual learning with window=3
-        for pass in 0..3 {
-            vocab.learn_from_context(&sentences, 3);
-            println!("Learning pass {} complete", pass + 1);
+        for _ in 0..passes {
+            vocab.learn_from_context_momentum(sentences, window, momentum);
         }
+        vocab
+    }
 
-        // Print top-20 most similar word pairs
-        println!("\n--- Top 20 Most Similar Word Pairs ---");
-        let words: Vec<String> = vocab.words.keys().cloned().collect();
-        let mut all_pairs: Vec<(String, String, f32)> = Vec::new();
-
+    /// Helper: compute average pairwise similarity among a set of words.
+    fn avg_pairwise_similarity(vocab: &Vocabulary, words: &[&str]) -> f32 {
+        let mut sum = 0.0f32;
+        let mut count = 0u32;
         for i in 0..words.len() {
             for j in (i + 1)..words.len() {
-                let sim = vocab.similarity(&words[i], &words[j]);
-                all_pairs.push((words[i].clone(), words[j].clone(), sim));
+                let sim = vocab.similarity(words[i], words[j]);
+                sum += sim;
+                count += 1;
             }
         }
-        all_pairs.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+        if count == 0 { 0.0 } else { sum / count as f32 }
+    }
 
-        for (rank, (w1, w2, sim)) in all_pairs.iter().take(20).enumerate() {
-            println!("  {:2}. {:15} - {:15} : {:.4}", rank + 1, w1, w2, sim);
-        }
-
-        // Core assertion: gatto-felino should be more similar than gatto-treno
-        let sim_gatto_felino = vocab.similarity("gatto", "felino");
-        let sim_gatto_treno = vocab.similarity("gatto", "treno");
-        let sim_gatto_micio = vocab.similarity("gatto", "micio");
-        let sim_cane_cucciolo = vocab.similarity("cane", "cucciolo");
-
-        println!("\n--- Key Similarity Pairs ---");
-        println!("  gatto - felino:   {:.4}", sim_gatto_felino);
-        println!("  gatto - micio:    {:.4}", sim_gatto_micio);
-        println!("  cane  - cucciolo: {:.4}", sim_cane_cucciolo);
-        println!("  gatto - treno:    {:.4}", sim_gatto_treno);
-
-        // Most similar to 'gatto'
-        let most_sim = vocab.most_similar("gatto", 10);
-        println!("\n--- Most Similar to 'gatto' ---");
-        for (word, sim) in &most_sim {
-            println!("  {:15} : {:.4}", word, sim);
-        }
-
-        // --- CSV Export ---
-        // Top-100 similarity matrix
-        {
-            let mut f = File::create("results/exp1_similarity_matrix.csv")
-                .expect("Failed to create exp1_similarity_matrix.csv");
-            writeln!(f, "word_a,word_b,similarity").unwrap();
-            for (w1, w2, sim) in all_pairs.iter().take(100) {
-                writeln!(f, "{},{},{:.6}", w1, w2, sim).unwrap();
+    /// Helper: compute average similarity between all pairs across two groups.
+    fn avg_cross_similarity(vocab: &Vocabulary, group_a: &[&str], group_b: &[&str]) -> f32 {
+        let mut sum = 0.0f32;
+        let mut count = 0u32;
+        for a in group_a {
+            for b in group_b {
+                sum += vocab.similarity(a, b);
+                count += 1;
             }
         }
-
-        // Top-20 pairs
-        {
-            let mut f = File::create("results/exp1_top_pairs.csv")
-                .expect("Failed to create exp1_top_pairs.csv");
-            writeln!(f, "rank,word_a,word_b,similarity").unwrap();
-            for (rank, (w1, w2, sim)) in all_pairs.iter().take(20).enumerate() {
-                writeln!(f, "{},{},{},{:.6}", rank + 1, w1, w2, sim).unwrap();
-            }
-        }
-
-        // Key similarity pairs
-        {
-            let mut f = File::create("results/exp1_key_pairs.csv")
-                .expect("Failed to create exp1_key_pairs.csv");
-            writeln!(f, "word_a,word_b,similarity").unwrap();
-            writeln!(f, "gatto,felino,{:.6}", sim_gatto_felino).unwrap();
-            writeln!(f, "gatto,micio,{:.6}", sim_gatto_micio).unwrap();
-            writeln!(f, "cane,cucciolo,{:.6}", sim_cane_cucciolo).unwrap();
-            writeln!(f, "gatto,treno,{:.6}", sim_gatto_treno).unwrap();
-        }
-
-        println!("\n[CSV] Saved results/exp1_similarity_matrix.csv, exp1_top_pairs.csv, exp1_key_pairs.csv");
-
-        assert!(
-            sim_gatto_felino > sim_gatto_treno,
-            "gatto-felino ({:.4}) should be more similar than gatto-treno ({:.4})",
-            sim_gatto_felino,
-            sim_gatto_treno
-        );
-
-        println!("\n[PASS] gatto-felino ({:.4}) > gatto-treno ({:.4})", sim_gatto_felino, sim_gatto_treno);
-        println!("\n=== Experiment 1 Complete ===\n");
+        if count == 0 { 0.0 } else { sum / count as f32 }
     }
 
     #[test]
-    fn test_exp1_expanded_corpus() {
-        println!("\n=== Experiment 1b: Expanded Corpus ({} sentences) ===\n",
-            crate::utils::corpus::expanded_corpus().len());
+    fn test_exp1_research() {
+        println!("\n{}", "=".repeat(60));
+        println!("=== Experiment 1: Semantic Similarity — Expanded Protocol ===");
+        println!("{}\n", "=".repeat(60));
 
         let tokenizer = Tokenizer::new();
-        let expanded = crate::utils::corpus::expanded_corpus();
-        let sentences: Vec<Vec<String>> = expanded
-            .iter()
-            .map(|s| tokenizer.tokenize(s))
-            .collect();
 
-        let mut vocab = Vocabulary::new(2048, 42);
-        for sentence in &sentences {
+        // ── 1. Build trained vocabulary ────────────────────────────────────
+        println!("--- Phase 1: Build trained vocabulary ---");
+        let mut full_corpus = corpus::expanded_corpus();
+        full_corpus.extend(corpus::synonym_parallel_corpus());
+        let full_sentences: Vec<Vec<String>> = full_corpus.iter().map(|s| tokenizer.tokenize(s)).collect();
+
+        let vocab = build_trained_vocab(&full_sentences, 5, 0.7, 3);
+        println!("  Corpus: {} sentences, Vocab: {} words", full_sentences.len(), vocab.len());
+        println!("  Training: 5 passes, momentum=0.7, window=3\n");
+
+        // ── 2. Semantic clusters ───────────────────────────────────────────
+        println!("--- Phase 2: Semantic cluster analysis ---\n");
+
+        let clusters: Vec<(&str, Vec<&str>)> = vec![
+            ("ANIMALI",  vec!["gatto", "micio", "felino", "cane", "cucciolo", "uccello", "pesce"]),
+            ("CIBO",     vec!["pasta", "pane", "cena", "cuoco", "cucina", "torta"]),
+            ("NATURA",   vec!["sole", "pioggia", "vento", "neve", "mare", "cielo"]),
+            ("FAMIGLIA", vec!["mamma", "papà", "nonna", "nonno", "bambino", "fratello"]),
+            ("LAVORO",   vec!["lavoro", "ufficio", "ingegnere", "programmatore", "scrive", "progetta"]),
+        ];
+
+        // Filter words that actually exist in the vocabulary
+        let clusters_filtered: Vec<(&str, Vec<&str>)> = clusters.iter().map(|(name, words)| {
+            let existing: Vec<&str> = words.iter().copied().filter(|w| vocab.words.contains_key(*w)).collect();
+            (*name, existing)
+        }).collect();
+
+        // Compute intra-cluster and inter-cluster similarities
+        struct ClusterResult {
+            name: String,
+            intra_sim: f32,
+            inter_sim: f32,
+            ratio: f32,
+        }
+
+        let mut cluster_results: Vec<ClusterResult> = Vec::new();
+
+        for (name, words) in &clusters_filtered {
+            if words.len() < 2 {
+                println!("  [SKIP] Cluster {} has < 2 words in vocab", name);
+                continue;
+            }
+
+            let intra_sim = avg_pairwise_similarity(&vocab, words);
+
+            // Inter-cluster: average similarity to ALL words in OTHER clusters
+            let mut inter_sims = Vec::new();
+            for (other_name, other_words) in &clusters_filtered {
+                if *other_name == *name || other_words.is_empty() { continue; }
+                inter_sims.push(avg_cross_similarity(&vocab, words, other_words));
+            }
+            let inter_sim = if inter_sims.is_empty() { 0.0 } else {
+                inter_sims.iter().sum::<f32>() / inter_sims.len() as f32
+            };
+
+            let ratio = if inter_sim.abs() < 1e-9 { f32::INFINITY } else { intra_sim / inter_sim };
+
+            println!("  {:10} | intra={:.4} | inter={:.4} | ratio={:.2} | words={:?}",
+                name, intra_sim, inter_sim, ratio, words);
+
+            cluster_results.push(ClusterResult {
+                name: name.to_string(),
+                intra_sim,
+                inter_sim,
+                ratio,
+            });
+        }
+
+        // ── 3. Random baseline comparison ──────────────────────────────────
+        println!("\n--- Phase 3: Random baseline comparison ---\n");
+
+        let mut baseline_vocab = Vocabulary::new(D, 999);
+        // Create same words but NO training
+        for sentence in &full_sentences {
             for word in sentence {
-                vocab.get_or_create(word);
-            }
-        }
-        println!("Vocabulary size: {} words", vocab.len());
-
-        // 5 passes with window=3
-        for pass in 0..5 {
-            vocab.learn_from_context(&sentences, 3);
-            if (pass + 1) % 2 == 0 {
-                println!("Pass {} complete", pass + 1);
+                baseline_vocab.get_or_create(word);
             }
         }
 
-        let sim_gatto_felino = vocab.similarity("gatto", "felino");
-        let sim_gatto_micio = vocab.similarity("gatto", "micio");
-        let sim_cane_cucciolo = vocab.similarity("cane", "cucciolo");
-        let sim_gatto_treno = vocab.similarity("gatto", "treno");
-        let sim_gatto_pasta = vocab.similarity("gatto", "pasta");
-        let sim_mamma_papa = vocab.similarity("mamma", "papà");
+        println!("  {:20} | {:>10} | {:>10}", "Pair", "Trained", "Random");
+        println!("  {:-<20}-+-{:-<10}-+-{:-<10}", "", "", "");
 
-        println!("\n--- Key Pairs (expanded corpus) ---");
-        println!("  gatto - felino:   {:.4}", sim_gatto_felino);
-        println!("  gatto - micio:    {:.4}", sim_gatto_micio);
-        println!("  cane  - cucciolo: {:.4}", sim_cane_cucciolo);
-        println!("  mamma - papà:     {:.4}", sim_mamma_papa);
-        println!("  gatto - treno:    {:.4}", sim_gatto_treno);
-        println!("  gatto - pasta:    {:.4}", sim_gatto_pasta);
+        let test_pairs = vec![
+            ("gatto", "micio"),
+            ("gatto", "felino"),
+            ("cane", "cucciolo"),
+            ("mamma", "papà"),
+            ("sole", "pioggia"),
+        ];
 
-        // Most similar to gatto
-        let most_sim = vocab.most_similar("gatto", 10);
-        println!("\n--- Most Similar to 'gatto' ---");
-        for (word, sim) in &most_sim {
-            println!("  {:15} : {:.4}", word, sim);
+        for (a, b) in &test_pairs {
+            let trained_sim = vocab.similarity(a, b);
+            let random_sim = baseline_vocab.similarity(a, b);
+            println!("  {:10}-{:9} | {:>10.4} | {:>10.4}", a, b, trained_sim, random_sim);
         }
 
-        // Save CSV
+        // ── 4. Corpus scaling ──────────────────────────────────────────────
+        println!("\n--- Phase 4: Corpus scaling analysis ---\n");
+
+        let scale_sizes = vec![100, 300, 1000, 3000, full_sentences.len()];
+
+        struct ScaleResult {
+            n_sentences: usize,
+            gatto_micio: f32,
+            gatto_felino: f32,
+            cane_cucciolo: f32,
+        }
+
+        let mut scale_results: Vec<ScaleResult> = Vec::new();
+
+        for &n in &scale_sizes {
+            let n_actual = n.min(full_sentences.len());
+            let subset = &full_sentences[..n_actual];
+
+            let v = build_trained_vocab(subset, 5, 0.7, 3);
+
+            let gm = v.similarity("gatto", "micio");
+            let gf = v.similarity("gatto", "felino");
+            let cc = v.similarity("cane", "cucciolo");
+
+            println!("  n={:5} | gatto-micio={:.4} | gatto-felino={:.4} | cane-cucciolo={:.4}",
+                n_actual, gm, gf, cc);
+
+            scale_results.push(ScaleResult {
+                n_sentences: n_actual,
+                gatto_micio: gm,
+                gatto_felino: gf,
+                cane_cucciolo: cc,
+            });
+        }
+
+        // ── 5. Save CSVs ──────────────────────────────────────────────────
+        println!("\n--- Phase 5: Saving CSV results ---");
+
+        // exp1_clusters.csv
         {
-            let mut f = File::create("results/exp1b_expanded_key_pairs.csv")
-                .expect("create csv");
-            writeln!(f, "word_a,word_b,similarity").unwrap();
-            writeln!(f, "gatto,felino,{:.6}", sim_gatto_felino).unwrap();
-            writeln!(f, "gatto,micio,{:.6}", sim_gatto_micio).unwrap();
-            writeln!(f, "cane,cucciolo,{:.6}", sim_cane_cucciolo).unwrap();
-            writeln!(f, "mamma,papà,{:.6}", sim_mamma_papa).unwrap();
-            writeln!(f, "gatto,treno,{:.6}", sim_gatto_treno).unwrap();
-            writeln!(f, "gatto,pasta,{:.6}", sim_gatto_pasta).unwrap();
+            let mut f = File::create("results/experiments/exp1_clusters.csv")
+                .expect("Failed to create exp1_clusters.csv");
+            writeln!(f, "cluster,intra_sim,inter_sim,ratio").unwrap();
+            for cr in &cluster_results {
+                writeln!(f, "{},{:.6},{:.6},{:.4}", cr.name, cr.intra_sim, cr.inter_sim, cr.ratio).unwrap();
+            }
+            println!("  Saved results/experiments/exp1_clusters.csv");
+        }
+
+        // exp1_corpus_scaling.csv
+        {
+            let mut f = File::create("results/experiments/exp1_corpus_scaling.csv")
+                .expect("Failed to create exp1_corpus_scaling.csv");
+            writeln!(f, "n_sentences,gatto_micio,gatto_felino,cane_cucciolo").unwrap();
+            for sr in &scale_results {
+                writeln!(f, "{},{:.6},{:.6},{:.6}", sr.n_sentences, sr.gatto_micio, sr.gatto_felino, sr.cane_cucciolo).unwrap();
+            }
+            println!("  Saved results/experiments/exp1_corpus_scaling.csv");
+        }
+
+        // ── 6. Assertions ─────────────────────────────────────────────────
+        println!("\n--- Phase 6: Assertions ---");
+
+        // Count clusters where intra/inter ratio > 2.0
+        let good_clusters = cluster_results.iter()
+            .filter(|cr| cr.ratio > 2.0)
+            .count();
+
+        println!("  Clusters with ratio > 2.0: {}/{}", good_clusters, cluster_results.len());
+        for cr in &cluster_results {
+            let status = if cr.ratio > 2.0 { "PASS" } else { "FAIL" };
+            println!("    [{}] {} ratio={:.2}", status, cr.name, cr.ratio);
         }
 
         assert!(
-            sim_gatto_felino > sim_gatto_treno,
-            "gatto-felino ({:.4}) should exceed gatto-treno ({:.4})",
-            sim_gatto_felino, sim_gatto_treno
+            good_clusters >= 3,
+            "At least 3 clusters should have intra/inter ratio > 2.0, got {}",
+            good_clusters
         );
 
-        println!("\n[PASS] Expanded corpus: gatto-felino ({:.4}) > gatto-treno ({:.4})",
-            sim_gatto_felino, sim_gatto_treno);
-        println!("=== Experiment 1b Complete ===\n");
+        println!("\n[PASS] {} clusters have intra/inter ratio > 2.0", good_clusters);
+        println!("\n=== Experiment 1 Complete ===\n");
     }
 }

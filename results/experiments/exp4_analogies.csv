@@ -1,0 +1,21 @@
+a,b,c,expected,method,rank1,rank1_sim,hit
+mamma,papà,nonna,"["nonno"]",arithmetic,pranzo,0.717798,false
+mamma,papà,nonna,"["nonno"]",hdc,cucina,0.346354,false
+gatto,felino,cane,"["cucciolo", "animale"]",arithmetic,cortile,0.761369,true
+gatto,felino,cane,"["cucciolo", "animale"]",hdc,leggono,0.078870,false
+sole,giorno,luna,"["notte", "sera"]",arithmetic,ogni,0.582564,false
+sole,giorno,luna,"["notte", "sera"]",hdc,prezzemolo,0.089386,false
+cuoco,cucina,programmatore,"["codice", "ufficio", "computer"]",arithmetic,corre,0.517370,true
+cuoco,cucina,programmatore,"["codice", "ufficio", "computer"]",hdc,corre,0.214743,false
+grande,piccolo,alto,"["basso"]",arithmetic,oggetti,0.757054,false
+grande,piccolo,alto,"["basso"]",hdc,oggetti,0.079120,false
+gatto,micio,cane,"["cucciolo"]",arithmetic,cortile,0.752800,true
+gatto,micio,cane,"["cucciolo"]",hdc,cortile,0.580314,true
+mamma,cucina,papà,"["lavoro", "ufficio", "gioca"]",arithmetic,pranzo,0.805477,false
+mamma,cucina,papà,"["lavoro", "ufficio", "gioca"]",hdc,cameriere,0.454959,false
+gatto,dorme,cane,"["corre", "gioca", "abbaia"]",arithmetic,divano,0.842678,false
+gatto,dorme,cane,"["corre", "gioca", "abbaia"]",hdc,morbido,0.086554,false
+bambino,gioca,nonno,"["racconta", "dorme", "legge"]",arithmetic,carte,0.610203,false
+bambino,gioca,nonno,"["racconta", "dorme", "legge"]",hdc,figli,0.297778,false
+pioggia,bagna,sole,"["scalda", "splende", "illumina"]",arithmetic,tramonto,0.599055,false
+pioggia,bagna,sole,"["scalda", "splende", "illumina"]",hdc,assaggia,0.099861,false

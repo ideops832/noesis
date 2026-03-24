@@ -1,0 +1,6 @@
+sentence_a,sentence_b,similarity
+"il gatto mangia il pesce","il pesce mangia il gatto",0.320694
+"il cane insegue il gatto","il gatto insegue il cane",0.386746
+"il cuoco prepara la pasta","la pasta prepara il cuoco",0.322928
+"il dottore cura il paziente","il paziente cura il dottore",0.052205
+"il maestro insegna al bambino","il bambino insegna al maestro",-0.046865

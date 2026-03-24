@@ -1,0 +1,9 @@
+dialogue,turn,text,slow_sim_entity,fast_sim_entity,combined_sim_entity
+cat,1,"il gatto dorme sul divano",0.560016,0.560016,0.560016
+cat,2,"il felino si sveglia e si stiracchia",0.554814,0.223241,0.480590
+cat,3,"il micio mangia il pesce nella ciotola",0.568166,0.315206,0.545693
+cat,4,"il gatto gioca con la palla di lana",0.596472,0.530622,0.653321
+cooking,1,"il cuoco prepara la cena in cucina",0.247490,0.247490,0.247490
+cooking,2,"la pasta cuoce nella pentola grande",0.269716,0.315701,0.328451
+cooking,3,"il pane esce dal forno caldo",0.266623,0.123101,0.252011
+cooking,4,"la torta viene decorata con la crema",0.264937,0.049811,0.223942
