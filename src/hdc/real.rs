@@ -173,12 +173,13 @@ impl RealHV {
         }
     }
 
-    /// Converts to a BinaryHV: positive → 1, non-positive → 0.
+    /// Converts to a BinaryHV: negative → 1, non-negative → 0.
+    /// This is the inverse of BinaryHV::to_real() where 1→-1.0, 0→+1.0.
     pub fn to_binary(&self) -> super::binary::BinaryHV {
         let n_words = self.dim.div_ceil(64);
         let mut data = vec![0u64; n_words];
         for (i, &val) in self.data.iter().enumerate() {
-            if val > 0.0 {
+            if val < 0.0 {
                 data[i / 64] |= 1u64 << (i % 64);
             }
         }

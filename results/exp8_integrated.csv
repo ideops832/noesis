@@ -1,7 +1,7 @@
 test,metric,baseline,improved
-compositionality,top1,0.0833,0.3333
-compositionality,top3,0.2500,0.5833
-compositionality,top5,0.6667,0.6667
+compositionality,top1,0.0833,1.0000
+compositionality,top3,0.1667,1.0000
+compositionality,top5,0.5833,1.0000
 similarity,gatto-felino,0.1014,0.8299
 similarity,gatto-micio,0.0082,0.8326
 similarity,cane-cucciolo,-0.0076,0.8313

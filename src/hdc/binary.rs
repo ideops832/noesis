@@ -251,16 +251,19 @@ impl BinaryHV {
     }
 
     /// Converts this binary hypervector to a real-valued one.
-    /// Mapping: 0 → -1.0, 1 → +1.0.
+    ///
+    /// Mapping: 0 → +1.0, 1 → -1.0 (i.e., (-1)^bit).
+    /// This ensures that XOR in binary corresponds to element-wise multiply
+    /// in real space: (-1)^(a XOR b) = (-1)^a * (-1)^b.
     pub fn to_real(&self) -> super::real::RealHV {
         let mut data = Vec::with_capacity(self.dim);
         for i in 0..self.dim {
             let word_idx = i / 64;
             let bit_pos = i % 64;
             if self.data[word_idx] & (1u64 << bit_pos) != 0 {
-                data.push(1.0f32);
-            } else {
                 data.push(-1.0f32);
+            } else {
+                data.push(1.0f32);
             }
         }
         super::real::RealHV { data, dim: self.dim }

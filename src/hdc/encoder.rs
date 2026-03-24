@@ -113,22 +113,17 @@ impl Encoder {
         BinaryHV::bundle(&refs, &mut self.rng)
     }
 
-    /// Encodes a record using named roles from the role memory.
+    /// Encodes a record using named roles from the vocabulary.
     ///
-    /// Each pair is `(role_label, value_label)` where `role_label` is looked up
-    /// in the roles memory or registered as a new role.
+    /// Both role and value labels are looked up (or created) in the **vocab**,
+    /// ensuring that `encode_atom(role)` returns the same vector used here.
+    /// This guarantees consistent encoding/decoding.
     pub fn encode_record_named(&mut self, pairs: &[(&str, &str)]) -> BinaryHV {
         let bound: Vec<BinaryHV> = pairs
             .iter()
             .map(|(role, value)| {
-                let role_hv = if let Some(r) = self.roles.get(role) {
-                    r.clone()
-                } else {
-                    // Register new role
-                    let hv = BinaryHV::random(self.dim, &mut self.rng);
-                    self.roles.insert(role.to_string(), hv);
-                    self.roles.get(role).unwrap().clone()
-                };
+                // Use vocab for both role and value — same pool as encode_atom
+                let role_hv = self.register(role).clone();
                 let value_hv = self.register(value).clone();
                 BinaryHV::bind(&role_hv, &value_hv)
             })
@@ -155,10 +150,11 @@ impl Encoder {
     ///
     /// Returns the top-k vocabulary entries most similar to the unbound result.
     pub fn decode_role(&self, record_hv: &BinaryHV, role_label: &str) -> Vec<(String, f32)> {
+        // Use vocab (same pool as encode_record_named) for consistent encode/decode
         let role_hv = self
-            .roles
+            .vocab
             .get(role_label)
-            .expect("Role not found");
+            .expect("Role not found in vocab");
         let unbound = BinaryHV::bind(record_hv, role_hv);
         self.vocab.nearest_k(&unbound, 5)
     }
@@ -173,7 +169,7 @@ impl Encoder {
     /// This avoids the lossy RealHV→BinaryHV conversion and searches
     /// directly in real-valued space using cosine similarity.
     pub fn decode_role_real(&self, record_hv: &super::real::RealHV, role_label: &str, k: usize) -> Vec<(String, f32)> {
-        let role_bin = self.roles.get(role_label).expect("Role not found");
+        let role_bin = self.vocab.get(role_label).expect("Role not found in vocab");
         let role_real = role_bin.to_real();
         let unbound = super::real::RealHV::bind(record_hv, &role_real.inverse());
 
