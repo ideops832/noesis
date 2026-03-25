@@ -1,12 +1,12 @@
 sentence_a,sentence_b,similarity,pair_type
-"gatto dorme","gatto non dorme",0.344789,negation
-"cane mangia","cane non mangia",0.367175,negation
-"bambino gioca","bambino non gioca",0.375707,negation
-"sole splende","sole non splende",0.355488,negation
-"pioggia cade","pioggia non cade",0.326382,negation
+"gatto dorme","gatto non dorme",0.026645,negation
+"cane mangia","cane non mangia",0.065945,negation
+"bambino gioca","bambino non gioca",0.063356,negation
+"sole splende","sole non splende",0.057284,negation
+"pioggia cade","pioggia non cade",0.018411,negation
 "gatto dorme","gatto mangia",0.326824,different_verb
 "cane mangia","cane corre",0.310222,different_verb
-"gatto non dorme","gatto non mangia",0.336424,both_negated
-"cane non mangia","cane non corre",0.323477,both_negated
+"gatto non dorme","gatto non mangia",0.326824,both_negated
+"cane non mangia","cane non corre",0.310222,both_negated
 "gatto dorme","gatto dorme",1.000000,identity
 "gatto mangia pesce","pesce mangia gatto",0.610229,word_order

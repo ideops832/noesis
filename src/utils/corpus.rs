@@ -941,6 +941,321 @@ pub fn relational_corpus() -> Vec<String> {
         }
     }
 
+    // ── 6. Antonym parallels (grande:piccolo :: alto:basso) ─────────────
+    // "basso" was missing from vocabulary entirely — add dense parallel contexts.
+
+    let antonym_templates = &[
+        "il palazzo {a} è imponente",
+        "il palazzo {b} è modesto",
+        "l'uomo {a} cammina nella piazza",
+        "l'uomo {b} cammina nella piazza",
+        "il muro {a} blocca la vista",
+        "il muro {b} non blocca la vista",
+        "l'albero {a} fa ombra",
+        "l'albero {b} non fa ombra",
+        "il ragazzo {a} gioca a pallacanestro",
+        "il ragazzo {b} gioca a pallacanestro",
+        "la torre {a} domina la città",
+        "la torre {b} è nel villaggio",
+        "il prezzo {a} spaventa",
+        "il prezzo {b} attira",
+        "il numero {a} sorprende",
+        "il numero {b} è normale",
+        "il valore {a} cresce",
+        "il valore {b} diminuisce",
+    ];
+
+    let antonym_pairs: &[(&str, &str)] = &[
+        ("grande", "piccolo"),
+        ("alto", "basso"),
+    ];
+    for &(a, b) in antonym_pairs {
+        for tmpl in antonym_templates {
+            corpus.push(tmpl.replace("{a}", a).replace("{b}", b));
+        }
+    }
+
+    // Extra direct antonym association sentences
+    let antonym_direct = &[
+        "grande è il contrario di piccolo",
+        "piccolo è il contrario di grande",
+        "alto è il contrario di basso",
+        "basso è il contrario di alto",
+        "il grande e il piccolo sono opposti",
+        "l'alto e il basso sono opposti",
+        "non è grande ma piccolo",
+        "non è piccolo ma grande",
+        "non è alto ma basso",
+        "non è basso ma alto",
+        "da grande a piccolo cambia la dimensione",
+        "da alto a basso cambia l'altezza",
+        "il palazzo grande e il palazzo piccolo",
+        "il palazzo alto e il palazzo basso",
+        "un uomo grande e un uomo piccolo",
+        "un uomo alto e un uomo basso",
+        "la montagna grande sovrasta la collina piccola",
+        "la montagna alta sovrasta la collina bassa",
+    ];
+    for &s in antonym_direct {
+        corpus.push(s.to_string());
+    }
+
+    // ── 7. Animal synonym/diminutive parallels (gatto:felino::cane:?, gatto:micio::cane:?) ──
+
+    let animal_synonym = &[
+        // gatto:felino parallel
+        "il gatto è un felino domestico",
+        "il gatto è chiamato felino",
+        "il felino domestico è il gatto",
+        "ogni gatto è un felino",
+        "il gatto come felino caccia i topi",
+        "il felino più comune è il gatto",
+        "il gatto è il felino più amato",
+        // cane:cucciolo parallel
+        "il cane è un cucciolo cresciuto",
+        "il cane era un cucciolo piccolo",
+        "il cucciolo diventa un cane adulto",
+        "ogni cane è stato un cucciolo",
+        "il cane come cucciolo gioca nel prato",
+        "il cucciolo più dolce diventa un cane",
+        "il cane è il cucciolo più fedele",
+        // gatto:micio parallel
+        "il gatto è chiamato anche micio",
+        "il micio è un gatto piccolo",
+        "ogni micio è un gatto",
+        "il gatto si chiama micio",
+        "il micio gioca come un gatto",
+        "il gatto domestico è il micio di casa",
+        "il micio fa le fusa come ogni gatto",
+        "il gatto è un micio grande",
+        // cane:cucciolo diminutive parallel
+        "il cane si chiama cucciolo da piccolo",
+        "il cucciolo gioca come un cane",
+        "il cane domestico è il cucciolo di casa",
+        "il cucciolo abbaia come ogni cane",
+        "il cane è un cucciolo grande",
+        "il cucciolo cresce e diventa cane",
+        "il cucciolo è un cane giovane",
+        "il cucciolo è il piccolo del cane",
+    ];
+    for &s in animal_synonym {
+        corpus.push(s.to_string());
+    }
+
+    // Parallel template: gatto/felino and cane/cucciolo in same contexts
+    let cat_feline_dog_puppy_templates = &[
+        "il {a} dorme sul divano",
+        "il {a} mangia dalla ciotola",
+        "il {a} gioca nel giardino",
+        "il {a} corre nel prato",
+        "il {a} è un animale domestico",
+        "il {a} vive in casa con la famiglia",
+        "il {a} ha bisogno di cure",
+        "il {a} è affettuoso",
+    ];
+    let synonym_animal_pairs: &[(&str, &str)] = &[
+        ("gatto", "felino"),
+        ("cane", "cucciolo"),
+        ("gatto", "micio"),
+    ];
+    for &(word_a, word_b) in synonym_animal_pairs {
+        for tmpl in cat_feline_dog_puppy_templates {
+            corpus.push(tmpl.replace("{a}", word_a));
+            corpus.push(tmpl.replace("{a}", word_b));
+        }
+    }
+
+    // ── 8. Family activity differentiation (mamma:cucina::papà:lavoro) ───
+
+    let family_activity = &[
+        // mamma strongly associated with cucina
+        "la mamma cucina ogni giorno",
+        "la mamma cucina il pranzo per tutti",
+        "la mamma cucina la cena con amore",
+        "la mamma cucina piatti buoni",
+        "la mamma cucina nella cucina grande",
+        "la mamma cucina per la famiglia",
+        "la mamma cucina con passione",
+        "la mamma cucina sempre qualcosa di buono",
+        "la mamma cucina le ricette della nonna",
+        "la mamma cucina e tutti mangiano",
+        // papà strongly associated with lavoro
+        "il papà va al lavoro ogni giorno",
+        "il papà va al lavoro la mattina",
+        "il papà torna dal lavoro la sera",
+        "il papà lavora in ufficio al lavoro",
+        "il papà si impegna al lavoro",
+        "il papà lavora per la famiglia al lavoro",
+        "il papà ha molto lavoro da fare",
+        "il papà finisce il lavoro tardi",
+        "il papà inizia il lavoro presto",
+        "il papà ama il suo lavoro",
+        // Parallel structure: mamma+cucina / papà+lavoro
+        "la mamma sta in cucina e il papà va al lavoro",
+        "la mamma prepara in cucina mentre il papà è al lavoro",
+        "la mamma in cucina e il papà al lavoro",
+        "quando la mamma cucina il papà è al lavoro",
+        "la mamma torna dalla cucina e il papà dal lavoro",
+    ];
+    for &s in family_activity {
+        corpus.push(s.to_string());
+    }
+
+    // ── 9. Animal action differentiation (gatto:dorme::cane:corre) ───────
+
+    let animal_action = &[
+        // gatto strongly associated with dorme
+        "il gatto dorme sul divano tutto il giorno",
+        "il gatto dorme al sole",
+        "il gatto dorme nella cuccia",
+        "il gatto dorme sempre",
+        "il gatto dorme durante il pomeriggio",
+        "il gatto dorme molte ore",
+        "il gatto dorme in casa",
+        "il gatto dorme tranquillo",
+        "il gatto dorme acciambellato",
+        "il gatto dorme e sogna",
+        "il gatto dorme sul letto",
+        "il gatto dorme vicino al camino",
+        "il gatto dorme beato",
+        "il gatto dorme pacifico",
+        "il gatto dorme sereno",
+        // cane strongly associated with corre
+        "il cane corre nel parco tutto il giorno",
+        "il cane corre al sole",
+        "il cane corre nel prato",
+        "il cane corre sempre",
+        "il cane corre durante il pomeriggio",
+        "il cane corre per molte ore",
+        "il cane corre fuori casa",
+        "il cane corre felice",
+        "il cane corre dietro la palla",
+        "il cane corre e gioca",
+        "il cane corre nel giardino",
+        "il cane corre vicino al padrone",
+        "il cane corre veloce",
+        "il cane corre libero",
+        "il cane corre contento",
+        // cane also associated with abbaia
+        "il cane abbaia forte",
+        "il cane abbaia sempre",
+        "il cane abbaia agli sconosciuti",
+        "il cane abbaia nel giardino",
+        "il cane abbaia di notte",
+    ];
+    for &s in animal_action {
+        corpus.push(s.to_string());
+    }
+
+    // ── 10. Age-activity parallels (bambino:gioca::nonno:racconta) ───────
+
+    let age_activity = &[
+        // bambino strongly associated with gioca
+        "il bambino gioca nel parco",
+        "il bambino gioca con i giocattoli",
+        "il bambino gioca tutto il giorno",
+        "il bambino gioca con gli amici",
+        "il bambino gioca in giardino",
+        "il bambino gioca a pallone",
+        "il bambino gioca felice",
+        "il bambino gioca sempre",
+        "il bambino gioca in cortile",
+        "il bambino gioca e ride",
+        "il bambino gioca dopo la scuola",
+        "il bambino gioca nella stanza",
+        "il bambino gioca con la palla",
+        "il bambino gioca sul prato",
+        "il bambino gioca con i compagni",
+        // nonno strongly associated with racconta
+        "il nonno racconta le storie",
+        "il nonno racconta ai nipoti",
+        "il nonno racconta tutto il giorno",
+        "il nonno racconta con passione",
+        "il nonno racconta in giardino",
+        "il nonno racconta le favole",
+        "il nonno racconta volentieri",
+        "il nonno racconta sempre",
+        "il nonno racconta in cortile",
+        "il nonno racconta e sorride",
+        "il nonno racconta dopo la cena",
+        "il nonno racconta nella stanza",
+        "il nonno racconta con calma",
+        "il nonno racconta sul prato",
+        "il nonno racconta ai bambini",
+        // Parallel structure
+        "il bambino gioca e il nonno racconta",
+        "mentre il bambino gioca il nonno racconta",
+        "il bambino gioca nel parco e il nonno racconta le storie",
+        "il bambino gioca felice e il nonno racconta volentieri",
+        "al parco il bambino gioca e il nonno racconta",
+    ];
+    for &s in age_activity {
+        corpus.push(s.to_string());
+    }
+
+    // ── 11. Extra celestial/temporal reinforcement (sole:giorno::luna:notte) ──
+
+    let celestial_extra = &[
+        "il sole appartiene al giorno",
+        "la luna appartiene alla notte",
+        "il sole è la stella del giorno",
+        "la luna è la stella della notte",
+        "quando c'è il sole è giorno",
+        "quando c'è la luna è notte",
+        "il sole significa giorno",
+        "la luna significa notte",
+        "il sole di giorno illumina tutto",
+        "la luna di notte illumina tutto",
+        "il sole rende luminoso il giorno",
+        "la luna rende luminosa la notte",
+        "il sole è il re del giorno",
+        "la luna è la regina della notte",
+        "il sole domina il giorno",
+        "la luna domina la notte",
+        "senza sole non c'è giorno",
+        "senza luna non c'è notte",
+        "il sole e il giorno vanno insieme",
+        "la luna e la notte vanno insieme",
+    ];
+    for &s in celestial_extra {
+        corpus.push(s.to_string());
+    }
+
+    // ── 12. Pioggia:bagna::sole:scalda/splende reinforcement ─────────────
+
+    let element_action_extra = &[
+        "la pioggia bagna la terra",
+        "il sole scalda la terra",
+        "la pioggia bagna i fiori",
+        "il sole scalda i fiori",
+        "la pioggia bagna il prato",
+        "il sole scalda il prato",
+        "la pioggia bagna le strade",
+        "il sole scalda le strade",
+        "la pioggia bagna tutto",
+        "il sole scalda tutto",
+        "la pioggia bagna i campi",
+        "il sole scalda i campi",
+        "la pioggia bagna le piante",
+        "il sole scalda le piante",
+        "la pioggia bagna e il sole scalda",
+        "quando piove la pioggia bagna e quando è sereno il sole scalda",
+        "la pioggia bagna il giardino",
+        "il sole scalda il giardino",
+        "la pioggia bagna la campagna",
+        "il sole scalda la campagna",
+        // splende
+        "la pioggia bagna la città",
+        "il sole splende sulla città",
+        "la pioggia bagna il bosco",
+        "il sole splende sul bosco",
+        "la pioggia bagna il mondo",
+        "il sole splende sul mondo",
+    ];
+    for &s in element_action_extra {
+        corpus.push(s.to_string());
+    }
+
     // Deduplicate while preserving order.
     let mut seen = std::collections::HashSet::new();
     corpus.retain(|s| seen.insert(s.clone()));

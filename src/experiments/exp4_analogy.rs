@@ -42,10 +42,10 @@ mod tests {
             }
         }
 
-        for pass in 0..5 {
+        for pass in 0..8 {
             vocab.learn_from_context_with_bigrams(&sentences, 3, 0.7, 0.5);
-            if (pass + 1) % 2 == 0 || pass == 4 {
-                println!("  Pass {}/5 complete", pass + 1);
+            if (pass + 1) % 2 == 0 || pass == 7 {
+                println!("  Pass {}/8 complete", pass + 1);
             }
         }
         println!("  Vocabulary: {} words, D={}\n", vocab.len(), D);

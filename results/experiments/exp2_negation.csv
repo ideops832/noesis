@@ -1,6 +1,6 @@
 affirmative,negative,similarity
-"gatto dorme","gatto non dorme",0.521038
-"cane mangia","cane non mangia",0.509181
-"bambino gioca","bambino non gioca",0.492244
-"sole splende","sole non splende",0.506311
-"pioggia cade","pioggia non cade",0.521037
+"gatto dorme","gatto non dorme",0.028989
+"cane mangia","cane non mangia",0.004436
+"bambino gioca","bambino non gioca",0.007486
+"sole splende","sole non splende",0.001040
+"pioggia cade","pioggia non cade",-0.009274

@@ -1,21 +1,21 @@
 a,b,c,expected,method,rank1,rank1_sim,hit
-mamma,papà,nonna,"["nonno"]",arithmetic,fermata,0.770837,true
-mamma,papà,nonna,"["nonno"]",hdc,figlia,0.403947,true
-gatto,felino,cane,"["cucciolo", "animale"]",arithmetic,passeggio,0.638797,false
-gatto,felino,cane,"["cucciolo", "animale"]",hdc,carne,0.111062,false
-sole,giorno,luna,"["notte", "sera"]",arithmetic,ogni,0.584947,false
-sole,giorno,luna,"["notte", "sera"]",hdc,ogni,0.127130,false
-cuoco,cucina,programmatore,"["codice", "ufficio", "computer"]",arithmetic,attenzione,0.953701,true
-cuoco,cucina,programmatore,"["codice", "ufficio", "computer"]",hdc,attenzione,0.444718,true
-grande,piccolo,alto,"["basso"]",arithmetic,nuvole,0.652254,false
-grande,piccolo,alto,"["basso"]",hdc,ilgelo,0.069959,false
-gatto,micio,cane,"["cucciolo"]",arithmetic,passeggio,0.639356,false
-gatto,micio,cane,"["cucciolo"]",hdc,carne,0.085903,false
-mamma,cucina,papà,"["lavoro", "ufficio", "gioca"]",arithmetic,cuoco,0.841841,false
-mamma,cucina,papà,"["lavoro", "ufficio", "gioca"]",hdc,verdi,0.075705,false
-gatto,dorme,cane,"["corre", "gioca", "abbaia"]",arithmetic,passeggio,0.716738,false
-gatto,dorme,cane,"["corre", "gioca", "abbaia"]",hdc,carne,0.144986,false
-bambino,gioca,nonno,"["racconta", "dorme", "legge"]",arithmetic,aspetta,0.742285,false
-bambino,gioca,nonno,"["racconta", "dorme", "legge"]",hdc,film,0.095687,false
-pioggia,bagna,sole,"["scalda", "splende", "illumina"]",arithmetic,riposa,0.965056,false
-pioggia,bagna,sole,"["scalda", "splende", "illumina"]",hdc,muove,0.121772,true
+mamma,papà,nonna,"["nonno"]",arithmetic,ricette,0.993313,false
+mamma,papà,nonna,"["nonno"]",hdc,ricette,0.991277,false
+gatto,felino,cane,"["cucciolo", "animale"]",arithmetic,fedele,0.742577,false
+gatto,felino,cane,"["cucciolo", "animale"]",hdc,solleva,0.064791,false
+sole,giorno,luna,"["notte", "sera"]",arithmetic,insieme,0.951996,true
+sole,giorno,luna,"["notte", "sera"]",hdc,mondo,0.408822,false
+cuoco,cucina,programmatore,"["codice", "ufficio", "computer"]",arithmetic,codice,0.786512,true
+cuoco,cucina,programmatore,"["codice", "ufficio", "computer"]",hdc,direttore,0.073102,false
+grande,piccolo,alto,"["basso"]",arithmetic,arrampica,0.607358,true
+grande,piccolo,alto,"["basso"]",hdc,piazza,0.081361,false
+gatto,micio,cane,"["cucciolo"]",arithmetic,giovane,0.741777,false
+gatto,micio,cane,"["cucciolo"]",hdc,solleva,0.063757,false
+mamma,cucina,papà,"["lavoro", "ufficio", "gioca"]",arithmetic,lavoro,0.998938,true
+mamma,cucina,papà,"["lavoro", "ufficio", "gioca"]",hdc,lavoro,0.998491,true
+gatto,dorme,cane,"["corre", "gioca", "abbaia"]",arithmetic,abbaia,0.999412,true
+gatto,dorme,cane,"["corre", "gioca", "abbaia"]",hdc,abbaia,0.860766,true
+bambino,gioca,nonno,"["racconta", "dorme", "legge"]",arithmetic,parco,0.993265,true
+bambino,gioca,nonno,"["racconta", "dorme", "legge"]",hdc,parco,0.993106,true
+pioggia,bagna,sole,"["scalda", "splende", "illumina"]",arithmetic,mondo,0.999340,true
+pioggia,bagna,sole,"["scalda", "splende", "illumina"]",hdc,splende,0.990208,true

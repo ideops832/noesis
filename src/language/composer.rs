@@ -16,8 +16,8 @@ use crate::hdc::real::RealHV;
 use crate::language::tokenizer::Tokenizer;
 use crate::language::vocabulary::Vocabulary;
 
-/// Words treated as negation markers. When encountered, the next token's HV
-/// is bound with the negation operator to flip its meaning.
+/// Words treated as negation markers. When present in a sentence, the entire
+/// sentence vector is bound with the negation operator to flip its meaning.
 const NEGATION_WORDS: &[&str] = &["non", "mai", "nessuno"];
 
 /// Sentence composer that converts text into HDC sentence vectors.
@@ -59,21 +59,16 @@ impl Composer {
             return None;
         }
 
-        // Separate negation markers from content tokens.
-        // When a negation word is found, the *next* content token gets bound
-        // with `self.neg_hv` to flip its meaning.
+        // Detect negation and strip negation tokens from the list.
+        let mut has_negation = false;
         let mut content_tokens: Vec<String> = Vec::new();
-        let mut negated: Vec<bool> = Vec::new();
-        let mut negate_next = false;
 
         for token in &tokens {
             if NEGATION_WORDS.contains(&token.as_str()) {
-                negate_next = true;
+                has_negation = true;
                 continue; // skip the negation marker itself
             }
             content_tokens.push(token.clone());
-            negated.push(negate_next);
-            negate_next = false;
         }
 
         if content_tokens.is_empty() {
@@ -81,18 +76,9 @@ impl Composer {
         }
 
         // Positional unigrams: permute(word_i, i)
-        // For negated tokens, bind with neg_hv before permuting.
         let token_hvs: Vec<RealHV> = content_tokens
             .iter()
-            .enumerate()
-            .map(|(i, token)| {
-                let hv = self.vocabulary.get_or_create_clone(token);
-                if negated[i] {
-                    RealHV::bind(&self.neg_hv, &hv)
-                } else {
-                    hv
-                }
-            })
+            .map(|token| self.vocabulary.get_or_create_clone(token))
             .collect();
 
         let mut components: Vec<RealHV> = token_hvs
@@ -110,7 +96,14 @@ impl Composer {
         }
 
         let refs: Vec<&RealHV> = components.iter().collect();
-        Some(RealHV::bundle_normalized(&refs))
+        let sentence_hv = RealHV::bundle_normalized(&refs);
+
+        // Apply global negation: bind the entire sentence vector with NEG.
+        if has_negation {
+            Some(RealHV::bind(&self.neg_hv, &sentence_hv))
+        } else {
+            Some(sentence_hv)
+        }
     }
 
     /// Encodes a sentence with context-aware token weighting.
@@ -131,37 +124,26 @@ impl Composer {
             return None;
         }
 
-        // Separate negation markers from content tokens (same as encode_sentence).
+        // Detect negation and strip negation tokens (same as encode_sentence).
+        let mut has_negation = false;
         let mut content_tokens: Vec<String> = Vec::new();
-        let mut negated: Vec<bool> = Vec::new();
-        let mut negate_next = false;
 
         for token in &tokens {
             if NEGATION_WORDS.contains(&token.as_str()) {
-                negate_next = true;
+                has_negation = true;
                 continue;
             }
             content_tokens.push(token.clone());
-            negated.push(negate_next);
-            negate_next = false;
         }
 
         if content_tokens.is_empty() {
             return None;
         }
 
-        // Build token HVs with negation handling.
+        // Build token HVs (no per-token negation).
         let token_hvs: Vec<RealHV> = content_tokens
             .iter()
-            .enumerate()
-            .map(|(i, token)| {
-                let hv = self.vocabulary.get_or_create_clone(token);
-                if negated[i] {
-                    RealHV::bind(&self.neg_hv, &hv)
-                } else {
-                    hv
-                }
-            })
+            .map(|token| self.vocabulary.get_or_create_clone(token))
             .collect();
 
         // Compute context-weighted positional components.
@@ -189,7 +171,14 @@ impl Composer {
         }
 
         let refs: Vec<&RealHV> = components.iter().collect();
-        Some(RealHV::bundle_normalized(&refs))
+        let sentence_hv = RealHV::bundle_normalized(&refs);
+
+        // Apply global negation: bind the entire sentence vector with NEG.
+        if has_negation {
+            Some(RealHV::bind(&self.neg_hv, &sentence_hv))
+        } else {
+            Some(sentence_hv)
+        }
     }
 
     /// Computes cosine similarity between two sentence encodings.
@@ -267,11 +256,11 @@ mod tests {
         println!("\n  Saved results/improvements/r1_negation/negation_pairs.csv");
 
         // --- Assertions ---
-        // Negation should significantly reduce similarity (< 0.7)
+        // Global negation should make vectors quasi-orthogonal (sim < 0.2)
         let neg_sim = composer.sentence_similarity("gatto dorme", "gatto non dorme");
         assert!(
-            neg_sim < 0.7,
-            "Negation should reduce similarity: got {neg_sim}"
+            neg_sim < 0.2,
+            "Negation should reduce similarity below 0.2: got {neg_sim}"
         );
 
         // Identity should be 1.0
