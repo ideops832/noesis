@@ -1,8 +1,8 @@
 phase,turn,text,gatto_trace,cucina_trace
-cat,1,"il gatto dorme sul divano",0.560016,-0.040101
-cat,2,"il felino mangia il pesce",0.575127,-0.041242
-cat,3,"il micio era stanco dopo aver giocato",0.571426,-0.040532
-cooking,4,"il cuoco prepara la cena",0.571988,-0.013315
-cooking,5,"la pasta cuoce in cucina",0.568816,0.012974
-cooking,6,"il pane esce dal forno",0.564350,0.014504
-query,7,"era stanco",0.564350,0.014504
+cat,1,"il gatto dorme sul divano",0.562465,-0.030643
+cat,2,"il felino mangia il pesce",0.578927,-0.030847
+cat,3,"il micio era stanco dopo aver giocato",0.570993,-0.029050
+cooking,4,"il cuoco prepara la cena",0.570486,-0.001843
+cooking,5,"la pasta cuoce in cucina",0.568041,0.021241
+cooking,6,"il pane esce dal forno",0.565825,0.022678
+query,7,"era stanco",0.565825,0.022678

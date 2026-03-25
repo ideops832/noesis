@@ -25,7 +25,7 @@ impl Tokenizer {
         let stopwords: HashSet<String> = [
             "il", "lo", "la", "i", "gli", "le", "un", "uno", "una",
             "di", "a", "da", "in", "con", "su", "per", "tra", "fra",
-            "e", "o", "ma", "che", "non", "si", "ci", "ne", "se",
+            "e", "o", "ma", "che", "si", "ci", "ne", "se",
             "è", "sono", "ha", "hanno", "era", "essere", "avere",
             "come", "anche", "più", "molto", "questo", "quello",
             "suo", "loro", "mio", "tuo",
@@ -124,8 +124,11 @@ mod tests {
     #[test]
     fn test_tokenizer_stopwords() {
         let tok = Tokenizer::new();
-        let tokens = tok.tokenize("di la con per tra fra e o ma che non");
+        let tokens = tok.tokenize("di la con per tra fra e o ma che");
         assert!(tokens.is_empty(), "All stopwords should be removed, got: {:?}", tokens);
+        // "non" is NOT a stopword — it's handled as a negation marker by the Composer
+        let tokens_non = tok.tokenize("non");
+        assert_eq!(tokens_non, vec!["non".to_string()], "'non' should survive tokenization");
     }
 
     #[test]

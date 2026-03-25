@@ -46,6 +46,7 @@ mod tests {
         let tokenizer = Tokenizer::new();
         let mut all_corpus: Vec<String> = corpus::expanded_corpus();
         all_corpus.extend(corpus::synonym_parallel_corpus());
+        all_corpus.extend(corpus::relational_corpus());
         let all_sents: Vec<Vec<String>> = all_corpus
             .iter()
             .map(|s| tokenizer.tokenize(s.as_str()))

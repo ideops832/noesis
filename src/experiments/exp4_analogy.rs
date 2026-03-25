@@ -32,6 +32,7 @@ mod tests {
         let tokenizer = Tokenizer::new();
         let mut full_corpus = corpus::expanded_corpus();
         full_corpus.extend(corpus::synonym_parallel_corpus());
+        full_corpus.extend(corpus::relational_corpus());
         let sentences: Vec<Vec<String>> = full_corpus.iter().map(|s| tokenizer.tokenize(s)).collect();
 
         let mut vocab = Vocabulary::new(D, 42);
@@ -42,7 +43,7 @@ mod tests {
         }
 
         for pass in 0..5 {
-            vocab.learn_from_context_momentum(&sentences, 3, 0.7);
+            vocab.learn_from_context_with_bigrams(&sentences, 3, 0.7, 0.5);
             if (pass + 1) % 2 == 0 || pass == 4 {
                 println!("  Pass {}/5 complete", pass + 1);
             }

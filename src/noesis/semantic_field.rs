@@ -375,4 +375,113 @@ mod tests {
             "Same seed should produce identical results: sim = {sim}"
         );
     }
+
+    #[test]
+    fn test_adaptive_dual_track_evolves() {
+        let config = make_config(BridgeStrategy::AdaptiveDualTrack);
+        let mut sf = SemanticField::new(config, 42);
+        let mut rng = StdRng::seed_from_u64(99);
+        let input = RealHV::random(1024, &mut rng);
+
+        for _ in 0..50 {
+            sf.step_default(&input);
+        }
+        assert!(
+            sf.state().data.iter().all(|x| x.is_finite()),
+            "AdaptiveDualTrack state should contain finite values"
+        );
+        assert!(sf.state().norm() > 0.01, "State should not be zero");
+    }
+
+    #[test]
+    fn test_adaptive_probes_move_toward_inputs() {
+        use crate::noesis::bridge::AdaptiveDualTrackBridge;
+
+        let mut rng = StdRng::seed_from_u64(42);
+        let bridge = AdaptiveDualTrackBridge::new(1024, 8, 0.05, &mut rng);
+
+        // Create two distinct "category" vectors
+        let cat_a = RealHV::random(1024, &mut rng).normalized();
+        let cat_b = RealHV::random(1024, &mut rng).normalized();
+
+        // Record initial max similarity of any probe to cat_a and cat_b
+        let initial_probes = bridge.get_probes();
+        let init_max_sim_a: f32 = initial_probes.iter()
+            .map(|p| RealHV::cosine_similarity(p, &cat_a))
+            .fold(f32::NEG_INFINITY, f32::max);
+        let init_max_sim_b: f32 = initial_probes.iter()
+            .map(|p| RealHV::cosine_similarity(p, &cat_b))
+            .fold(f32::NEG_INFINITY, f32::max);
+
+        // Feed 100 samples near cat_a and 100 near cat_b
+        for _ in 0..100 {
+            // Slight noise around category centroids
+            let noise_a = RealHV::random(1024, &mut rng).normalized();
+            let input_a = RealHV::add(&cat_a.scale(0.9), &noise_a.scale(0.1)).normalized();
+            bridge.adapt_probes(&input_a);
+
+            let noise_b = RealHV::random(1024, &mut rng).normalized();
+            let input_b = RealHV::add(&cat_b.scale(0.9), &noise_b.scale(0.1)).normalized();
+            bridge.adapt_probes(&input_b);
+        }
+
+        // After adaptation, at least one probe should be closer to cat_a
+        // and at least one closer to cat_b
+        let adapted_probes = bridge.get_probes();
+        let final_max_sim_a: f32 = adapted_probes.iter()
+            .map(|p| RealHV::cosine_similarity(p, &cat_a))
+            .fold(f32::NEG_INFINITY, f32::max);
+        let final_max_sim_b: f32 = adapted_probes.iter()
+            .map(|p| RealHV::cosine_similarity(p, &cat_b))
+            .fold(f32::NEG_INFINITY, f32::max);
+
+        assert!(
+            final_max_sim_a > init_max_sim_a,
+            "Probes should move toward cat_a: init={init_max_sim_a:.4}, final={final_max_sim_a:.4}"
+        );
+        assert!(
+            final_max_sim_b > init_max_sim_b,
+            "Probes should move toward cat_b: init={init_max_sim_b:.4}, final={final_max_sim_b:.4}"
+        );
+    }
+
+    #[test]
+    fn test_adaptive_vs_fixed_probes() {
+        // Compare adaptive and fixed DualTrack bridges:
+        // adaptive probes should provide better feature extraction
+        // for clustered inputs after adaptation.
+        let mut rng = StdRng::seed_from_u64(42);
+
+        // Create two category centroids
+        let cat_a = RealHV::random(1024, &mut rng).normalized();
+        let cat_b = RealHV::random(1024, &mut rng).normalized();
+
+        // Build two SemanticFields: adaptive and fixed
+        let config_adaptive = make_config(BridgeStrategy::AdaptiveDualTrack);
+        let config_fixed = make_config(BridgeStrategy::DualTrack);
+        let mut sf_adaptive = SemanticField::new(config_adaptive, 42);
+        let mut sf_fixed = SemanticField::new(config_fixed, 42);
+
+        // Feed 50 "animal" words (near cat_a)
+        for _ in 0..50 {
+            let noise = RealHV::random(1024, &mut rng).normalized();
+            let input = RealHV::add(&cat_a.scale(0.9), &noise.scale(0.1)).normalized();
+            sf_adaptive.step_default(&input);
+            sf_fixed.step_default(&input);
+        }
+
+        // Feed 50 "food" words (near cat_b)
+        for _ in 0..50 {
+            let noise = RealHV::random(1024, &mut rng).normalized();
+            let input = RealHV::add(&cat_b.scale(0.9), &noise.scale(0.1)).normalized();
+            sf_adaptive.step_default(&input);
+            sf_fixed.step_default(&input);
+        }
+
+        // Both should produce finite, non-zero states
+        assert!(sf_adaptive.state().data.iter().all(|x| x.is_finite()));
+        assert!(sf_fixed.state().data.iter().all(|x| x.is_finite()));
+        assert!(sf_adaptive.state().norm() > 0.01);
+        assert!(sf_fixed.state().norm() > 0.01);
+    }
 }

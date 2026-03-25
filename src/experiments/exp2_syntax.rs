@@ -107,7 +107,7 @@ mod tests {
 
         let avg_neg: f32 = neg_results.iter().map(|r| r.similarity).sum::<f32>() / neg_results.len() as f32;
         println!("\n  Average negation similarity: {:.4}", avg_neg);
-        println!("  (High similarity expected: 'non' is just one extra token)");
+        println!("  (Low similarity expected: negation flips meaning via bind with neg_hv)");
 
         // ── 4. Structure vs meaning ────────────────────────────────────────
         println!("\n--- Phase 4: Structure vs meaning ---\n");

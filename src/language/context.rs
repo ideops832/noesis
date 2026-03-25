@@ -26,6 +26,9 @@ pub struct ConversationContext {
     composer: Composer,
     turn_count: usize,
     dt_per_turn: f32,
+    /// Alpha for context-aware token weighting (R5).
+    /// 0.0 disables contextual encoding (equivalent to plain encode).
+    pub context_alpha: f32,
 }
 
 impl ConversationContext {
@@ -43,6 +46,7 @@ impl ConversationContext {
             composer,
             turn_count: 0,
             dt_per_turn,
+            context_alpha: 0.3,
         }
     }
 
@@ -50,11 +54,17 @@ impl ConversationContext {
     pub fn process_utterance(&mut self, text: &str) -> TurnReport {
         let state_before = self.field.state().clone();
 
-        // Encode the utterance
-        let input_hv = self
-            .composer
-            .encode_sentence(text)
-            .unwrap_or_else(|| RealHV::zero(self.composer.vocabulary.dim));
+        // Encode the utterance, using contextual weighting when context exists.
+        let state = self.field.state();
+        let input_hv = if state.norm() > 1e-9 && self.context_alpha.abs() > 1e-9 {
+            self.composer
+                .encode_sentence_contextual(text, &state.clone(), self.context_alpha)
+                .unwrap_or_else(|| RealHV::zero(self.composer.vocabulary.dim))
+        } else {
+            self.composer
+                .encode_sentence(text)
+                .unwrap_or_else(|| RealHV::zero(self.composer.vocabulary.dim))
+        };
 
         // Step the field with the encoded utterance
         self.field.step(&input_hv, self.dt_per_turn);

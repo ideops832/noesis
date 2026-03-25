@@ -557,6 +557,397 @@ pub fn synonym_parallel_corpus() -> Vec<String> {
     corpus
 }
 
+/// Generates sentences designed to encode relational parallels for analogy tasks.
+///
+/// Covers five relational dimensions:
+/// 1. Gender/family parallels (mamma:papà, figlia:figlio, nonna:nonno, sorella:fratello)
+/// 2. Functional parallels (profession → tool/domain)
+/// 3. Temporal/celestial parallels (sole:giorno, luna:notte, estate:inverno)
+/// 4. NATURA category boost (nature sentences with shared vocabulary)
+/// 5. Action parallels (animal → characteristic action)
+///
+/// Returns 400+ sentences with parallel structure to support distributional
+/// learning of relational analogies.
+pub fn relational_corpus() -> Vec<String> {
+    let mut corpus: Vec<String> = Vec::with_capacity(500);
+
+    // ── 1. Gender/Family parallels ─────────────────────────────────────────
+    // Each template is instantiated for both members of a gendered pair,
+    // producing structurally identical contexts that differ only in the
+    // gendered word.
+
+    let gender_pairs: &[(&str, &str, &str, &str)] = &[
+        // (fem_article, fem_noun, masc_article, masc_noun)
+        ("la", "mamma", "il", "papà"),
+        ("la", "figlia", "il", "figlio"),
+        ("la", "nonna", "il", "nonno"),
+        ("la", "sorella", "il", "fratello"),
+    ];
+
+    let gender_templates = &[
+        "{art} {nome} prepara la cena",
+        "{art} {nome} legge un libro",
+        "{art} {nome} studia a scuola",
+        "{art} {nome} racconta storie",
+        "{art} {nome} cammina nel parco",
+        "{art} {nome} gioca nel giardino",
+        "{art} {nome} mangia a tavola",
+        "{art} {nome} dorme in camera",
+        "{art} {nome} canta una canzone",
+        "{art} {nome} guarda la televisione",
+        "{art} {nome} pulisce la casa",
+        "{art} {nome} cucina il pranzo",
+        "{art} {nome} lavora con impegno",
+        "{art} {nome} aiuta in cucina",
+        "{art} {nome} va a fare la spesa",
+        "{art} {nome} porta il cane a passeggio",
+        "{art} {nome} apre la porta",
+        "{art} {nome} chiude la finestra",
+        "{art} {nome} accende la luce",
+        "{art} {nome} spegne il fuoco",
+    ];
+
+    for &(f_art, f_noun, m_art, m_noun) in gender_pairs {
+        for template in gender_templates {
+            corpus.push(
+                template
+                    .replace("{art}", f_art)
+                    .replace("{nome}", f_noun),
+            );
+            corpus.push(
+                template
+                    .replace("{art}", m_art)
+                    .replace("{nome}", m_noun),
+            );
+        }
+    }
+
+    // Extra cross-pair templates to reinforce within-pair similarity
+    let cross_family_templates = &[
+        "{art} {nome} abbraccia i bambini",
+        "{art} {nome} ride con la famiglia",
+        "{art} {nome} parla al telefono",
+        "{art} {nome} scrive una lettera",
+        "{art} {nome} aspetta alla fermata",
+    ];
+    for &(f_art, f_noun, m_art, m_noun) in gender_pairs {
+        for template in cross_family_templates {
+            corpus.push(template.replace("{art}", f_art).replace("{nome}", f_noun));
+            corpus.push(template.replace("{art}", m_art).replace("{nome}", m_noun));
+        }
+    }
+
+    // ── 2. Functional parallels (profession → domain/tool) ────────────────
+    // Each template pair maps a profession to its characteristic domain.
+
+    let profession_pairs: &[(&str, &str, &str, &str)] = &[
+        // (profession_a, domain_a, profession_b, domain_b)
+        ("cuoco", "cucina", "programmatore", "codice"),
+        ("dottore", "pazienti", "maestro", "studenti"),
+        ("contadino", "terra", "pescatore", "mare"),
+        ("pittore", "quadri", "musicista", "musica"),
+    ];
+
+    let functional_templates_specific: &[(&str, &str)] = &[
+        ("il {prof} lavora in {dom}", "il {prof} lavora con {dom}"),
+        ("il {prof} conosce bene {dom}", "il {prof} conosce bene {dom}"),
+        ("il {prof} ama {dom}", "il {prof} ama {dom}"),
+        ("il {prof} studia {dom}", "il {prof} studia {dom}"),
+        ("il {prof} si occupa di {dom}", "il {prof} si occupa di {dom}"),
+    ];
+
+    // Shared-context templates (both professions do the same action)
+    let functional_shared = &[
+        "il {prof} lavora ogni giorno",
+        "il {prof} si alza presto la mattina",
+        "il {prof} mangia durante la pausa",
+        "il {prof} torna a casa la sera",
+        "il {prof} guadagna lo stipendio",
+        "il {prof} è molto bravo",
+        "il {prof} ha molta esperienza",
+        "il {prof} inizia a lavorare",
+        "il {prof} finisce il lavoro",
+        "il {prof} riposa il fine settimana",
+    ];
+
+    for &(prof_a, dom_a, prof_b, dom_b) in profession_pairs {
+        for &(tmpl_a, tmpl_b) in functional_templates_specific {
+            corpus.push(tmpl_a.replace("{prof}", prof_a).replace("{dom}", dom_a));
+            corpus.push(tmpl_b.replace("{prof}", prof_b).replace("{dom}", dom_b));
+        }
+        for tmpl in functional_shared {
+            corpus.push(tmpl.replace("{prof}", prof_a));
+            corpus.push(tmpl.replace("{prof}", prof_b));
+        }
+    }
+
+    // Direct profession-domain association sentences
+    let profession_domain_direct = &[
+        "il cuoco prepara il pranzo in cucina",
+        "il cuoco lavora nella cucina del ristorante",
+        "il cuoco usa i coltelli in cucina",
+        "il programmatore scrive il codice al computer",
+        "il programmatore lavora sul codice ogni giorno",
+        "il programmatore corregge il codice con attenzione",
+        "il dottore cura i pazienti in ospedale",
+        "il dottore visita i pazienti ogni giorno",
+        "il dottore aiuta i pazienti con cura",
+        "il maestro insegna agli studenti a scuola",
+        "il maestro guida gli studenti con pazienza",
+        "il maestro spiega la lezione agli studenti",
+        "il contadino coltiva la terra nei campi",
+        "il contadino lavora la terra ogni giorno",
+        "il contadino prepara la terra per la semina",
+        "il pescatore naviga nel mare aperto",
+        "il pescatore lavora nel mare ogni mattina",
+        "il pescatore conosce il mare molto bene",
+        "il pittore dipinge i quadri nello studio",
+        "il pittore crea i quadri con passione",
+        "il pittore espone i quadri nella galleria",
+        "il musicista suona la musica ogni sera",
+        "il musicista compone la musica con talento",
+        "il musicista ama la musica da sempre",
+    ];
+    for &s in profession_domain_direct {
+        corpus.push(s.to_string());
+    }
+
+    // ── 3. Temporal/celestial parallels ───────────────────────────────────
+
+    // Pairs documented for reference:
+    // sole:giorno / luna:notte
+    // estate:caldo / inverno:freddo
+    // alba:mattina / tramonto:sera
+
+    let temporal_templates_celestial = &[
+        "il sole splende di giorno",
+        "la luna brilla di notte",
+        "il sole illumina il giorno",
+        "la luna illumina la notte",
+        "di giorno c'è il sole",
+        "di notte c'è la luna",
+        "il sole scalda di giorno",
+        "la luna appare di notte",
+        "il sole sorge ogni giorno",
+        "la luna sorge ogni notte",
+        "il giorno inizia con il sole",
+        "la notte inizia con la luna",
+        "il sole porta il giorno",
+        "la luna porta la notte",
+    ];
+    for &s in temporal_templates_celestial {
+        corpus.push(s.to_string());
+    }
+
+    let temporal_templates_seasons = &[
+        "estate porta il caldo",
+        "inverno porta il freddo",
+        "in estate fa caldo",
+        "in inverno fa freddo",
+        "il caldo arriva in estate",
+        "il freddo arriva in inverno",
+        "estate significa caldo",
+        "inverno significa freddo",
+        "durante estate fa molto caldo",
+        "durante inverno fa molto freddo",
+        "il caldo dell'estate è forte",
+        "il freddo dell'inverno è forte",
+    ];
+    for &s in temporal_templates_seasons {
+        corpus.push(s.to_string());
+    }
+
+    let temporal_templates_dawn = &[
+        "l'alba annuncia la mattina",
+        "il tramonto annuncia la sera",
+        "la mattina inizia con l'alba",
+        "la sera inizia con il tramonto",
+        "all'alba comincia la mattina",
+        "al tramonto comincia la sera",
+        "l'alba colora la mattina",
+        "il tramonto colora la sera",
+        "ogni mattina arriva l'alba",
+        "ogni sera arriva il tramonto",
+    ];
+    for &s in temporal_templates_dawn {
+        corpus.push(s.to_string());
+    }
+
+    // ── 4. NATURA category boost ──────────────────────────────────────────
+    // Dense nature sentences with heavily shared vocabulary to tighten the
+    // distributional cluster for nature words.
+
+    let natura_sentences = &[
+        "il sole scalda la terra",
+        "la pioggia bagna i fiori",
+        "il vento muove le foglie",
+        "la neve copre le montagne",
+        "il mare è calmo oggi",
+        "il fiume scorre nella valle",
+        "il lago riflette le montagne",
+        "il bosco è pieno di alberi",
+        "la foresta è verde e fitta",
+        "il cielo è azzurro e limpido",
+        "le stelle brillano nel cielo",
+        "la luna illumina il lago",
+        "il sole tramonta sul mare",
+        "la pioggia cade sulle foglie",
+        "il vento soffia tra gli alberi",
+        "la neve cade sulle montagne",
+        "il mare bagna la spiaggia",
+        "il fiume attraversa il bosco",
+        "il lago è circondato da montagne",
+        "il bosco ospita molti animali",
+        "la terra è bagnata dalla pioggia",
+        "i fiori crescono nel prato",
+        "le foglie cadono in autunno",
+        "le montagne toccano il cielo",
+        "il mare è profondo e blu",
+        "il sole riscalda il prato",
+        "la pioggia rinfresca la terra",
+        "il vento porta le nuvole",
+        "la neve copre il prato",
+        "il mare riflette il sole",
+        "il cielo si copre di nuvole",
+        "le stelle illuminano la notte",
+        "la luna sorge dietro le montagne",
+        "il sole sorge dal mare",
+        "la pioggia bagna la terra",
+        "il vento muove le onde del mare",
+        "la neve copre gli alberi",
+        "il mare si calma la sera",
+        "il fiume scorre verso il mare",
+        "il lago è limpido come il cielo",
+        "il bosco profuma di resina",
+        "la foresta è silenziosa",
+        "i fiori profumano il giardino",
+        "le foglie verdi coprono gli alberi",
+        "le montagne sono alte e maestose",
+        "il sole splende sulla campagna",
+        "la pioggia nutre la terra",
+        "il vento accarezza i fiori",
+        "la neve bianca copre tutto",
+        "il mare ondeggia dolcemente",
+        "il cielo rosso annuncia il tramonto",
+        "il sole caldo scalda i fiori",
+        "la pioggia leggera bagna il prato",
+        "il vento fresco soffia dal mare",
+        "la neve fresca copre la terra",
+        "il mare blu brilla al sole",
+        "il fiume limpido scorre tra le rocce",
+        "il lago calmo riflette il cielo",
+        "il bosco verde è pieno di vita",
+        "la terra fertile produce frutti",
+    ];
+    for &s in natura_sentences {
+        corpus.push(s.to_string());
+    }
+
+    // ── 5. Action parallels (animal → characteristic action) ──────────────
+
+    // Pairs documented for reference:
+    // uccello:vola / pesce:nuota
+    // gatto:corre / cavallo:galoppa
+    // serpente:striscia / rana:salta
+
+    // uccello/pesce specific
+    let bird_fish = &[
+        "l'uccello vola nel cielo",
+        "il pesce nuota nel mare",
+        "l'uccello vola tra le nuvole",
+        "il pesce nuota tra le alghe",
+        "l'uccello vola alto",
+        "il pesce nuota in profondità",
+        "l'uccello vola ogni giorno",
+        "il pesce nuota ogni giorno",
+        "l'uccello vola verso il sole",
+        "il pesce nuota verso il fondo",
+        "l'uccello mangia i semi",
+        "il pesce mangia le alghe",
+        "l'uccello vive nel nido",
+        "il pesce vive nel mare",
+        "l'uccello canta la mattina",
+        "il pesce si muove in silenzio",
+    ];
+    for &s in bird_fish {
+        corpus.push(s.to_string());
+    }
+
+    // gatto/cavallo specific
+    let cat_horse = &[
+        "il gatto corre nel prato",
+        "il cavallo corre nel campo",
+        "il gatto corre veloce",
+        "il cavallo galoppa veloce",
+        "il gatto corre e salta",
+        "il cavallo galoppa e salta",
+        "il gatto corre nel giardino",
+        "il cavallo galoppa nella campagna",
+        "il gatto corre dietro al topo",
+        "il cavallo galoppa nella prateria",
+        "il gatto si muove con agilità",
+        "il cavallo si muove con forza",
+        "il gatto vive in casa",
+        "il cavallo vive nella stalla",
+        "il gatto mangia la carne",
+        "il cavallo mangia il fieno",
+    ];
+    for &s in cat_horse {
+        corpus.push(s.to_string());
+    }
+
+    // serpente/rana specific
+    let snake_frog = &[
+        "il serpente striscia nell'erba",
+        "la rana salta nello stagno",
+        "il serpente striscia silenzioso",
+        "la rana salta con forza",
+        "il serpente striscia sul terreno",
+        "la rana salta sulla foglia",
+        "il serpente striscia lentamente",
+        "la rana salta velocemente",
+        "il serpente si nasconde tra le rocce",
+        "la rana si nasconde tra le piante",
+        "il serpente vive nel prato",
+        "la rana vive nello stagno",
+        "il serpente caccia i topi",
+        "la rana caccia gli insetti",
+        "il serpente si muove senza zampe",
+        "la rana si muove saltando",
+    ];
+    for &s in snake_frog {
+        corpus.push(s.to_string());
+    }
+
+    // Shared animal templates for action parallels
+    let shared_animal_templates = &[
+        "il {anim} cerca il cibo",
+        "il {anim} si riposa al sole",
+        "il {anim} è un animale",
+        "il {anim} vive nella natura",
+        "il {anim} cresce in fretta",
+    ];
+    let all_animals = &["uccello", "pesce", "gatto", "cavallo", "serpente", "rana"];
+    for tmpl in shared_animal_templates {
+        for &animal in all_animals {
+            let s = tmpl.replace("{anim}", animal);
+            // Fix article for uccello
+            let s = if animal == "uccello" {
+                s.replace("il uccello", "l'uccello")
+            } else {
+                s
+            };
+            corpus.push(s);
+        }
+    }
+
+    // Deduplicate while preserving order.
+    let mut seen = std::collections::HashSet::new();
+    corpus.retain(|s| seen.insert(s.clone()));
+
+    corpus
+}
+
 /// Simple deterministic hash for template slot selection (no randomness needed).
 fn simple_hash(a: &str, b: &str, c: &str) -> usize {
     let mut h: usize = 5381;

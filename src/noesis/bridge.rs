@@ -1,10 +1,15 @@
 //! Bridge trait and implementations connecting HDC space to LNN dynamics.
 //!
-//! Four strategies:
+//! Strategies:
 //! - A: RandomProjection (JL-style)
 //! - B: DirectHD (LNN operates in full HD space)
 //! - C: DualTrack (LNN controls HDC operations via probes)
 //! - D: SparseHD (each neuron sees a sparse subset of dimensions)
+//! - E: InputPreserving (LNN controls mixing rate only)
+//! - F: SemanticDualTrack (semantic probes + input-preserving mixing)
+//! - R6: AdaptiveDualTrack (LVQ-style probe learning)
+
+use std::cell::RefCell;
 
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -25,6 +30,10 @@ pub enum BridgeStrategy {
     /// Semantic DualTrack: uses semantic probes (not random) and
     /// combines input-preserving mixing with probe-guided adjustment.
     SemanticDualTrack,
+    /// Adaptive DualTrack: like DualTrack but probes adapt via LVQ-style
+    /// winner-take-all learning during encode. Probes move toward inputs
+    /// they are closest to, becoming category centroids over time.
+    AdaptiveDualTrack,
 }
 
 /// Bridge configuration.
@@ -548,6 +557,149 @@ impl Bridge for SemanticDualTrackBridge {
 }
 
 // =============================================================================
+// Strategy R6: Adaptive DualTrack (LVQ-style probe learning)
+// =============================================================================
+
+/// Bridge where probes adapt via LVQ-style winner-take-all learning.
+///
+/// Like `DualTrackBridge`, the LNN operates on similarity features extracted
+/// via probes and produces parameters for HDC operations. However, during
+/// each `encode_for_lnn` call the probe most similar to the input is updated
+/// to move toward the input. Over time, probes converge to category centroids
+/// in HD space, providing better feature extraction without external training.
+///
+/// Uses `RefCell` for interior mutability so that probe adaptation can happen
+/// inside `encode_for_lnn(&self, ...)`.
+pub struct AdaptiveDualTrackBridge {
+    probes: RefCell<Vec<RealHV>>,
+    n_probes: usize,
+    hd_dim: usize,
+    probe_lr: f32,
+}
+
+// SAFETY: AdaptiveDualTrackBridge uses RefCell which is !Sync. However, we
+// need Send + Sync for the Bridge trait. SemanticField is used single-threaded,
+// so we manually implement Sync. The RefCell is never shared across threads.
+unsafe impl Sync for AdaptiveDualTrackBridge {}
+
+impl AdaptiveDualTrackBridge {
+    pub fn new(hd_dim: usize, n_probes: usize, probe_lr: f32, rng: &mut impl Rng) -> Self {
+        let probes: Vec<RealHV> = (0..n_probes)
+            .map(|_| RealHV::random(hd_dim, rng).normalized())
+            .collect();
+        AdaptiveDualTrackBridge {
+            probes: RefCell::new(probes),
+            n_probes,
+            hd_dim,
+            probe_lr,
+        }
+    }
+
+    /// Update the probe most similar to `input` toward it (LVQ winner-take-all).
+    pub fn adapt_probes(&self, input: &RealHV) {
+        let mut probes = self.probes.borrow_mut();
+        // Find the probe most similar to input
+        let mut best_idx = 0;
+        let mut best_sim = f32::NEG_INFINITY;
+        for (i, probe) in probes.iter().enumerate() {
+            let sim = RealHV::cosine_similarity(probe, input);
+            if sim > best_sim {
+                best_sim = sim;
+                best_idx = i;
+            }
+        }
+        // Update winner probe toward input: p' = normalize((1-lr)*p + lr*input)
+        let old = &probes[best_idx];
+        let moved = RealHV::add(
+            &old.scale(1.0 - self.probe_lr),
+            &input.scale(self.probe_lr),
+        );
+        probes[best_idx] = moved.normalized();
+    }
+
+    /// Number of trainable probe parameters.
+    pub fn probe_param_count(&self) -> usize {
+        self.n_probes * self.hd_dim
+    }
+
+    /// Extract probe data as flat vector.
+    pub fn get_probe_params(&self) -> Vec<f32> {
+        let probes = self.probes.borrow();
+        let mut params = Vec::with_capacity(self.probe_param_count());
+        for probe in probes.iter() {
+            params.extend_from_slice(&probe.data);
+        }
+        params
+    }
+
+    /// Set probe data from flat vector.
+    pub fn set_probe_params(&self, params: &[f32]) {
+        assert_eq!(params.len(), self.probe_param_count());
+        let mut probes = self.probes.borrow_mut();
+        for (i, probe) in probes.iter_mut().enumerate() {
+            let offset = i * self.hd_dim;
+            probe.data.copy_from_slice(&params[offset..offset + self.hd_dim]);
+            probe.normalize();
+        }
+    }
+
+    /// Get a snapshot of the current probes (for analysis/testing).
+    pub fn get_probes(&self) -> Vec<RealHV> {
+        self.probes.borrow().clone()
+    }
+}
+
+impl Bridge for AdaptiveDualTrackBridge {
+    fn encode_for_lnn(&self, state: &RealHV, input: &RealHV) -> Vec<f32> {
+        // Adapt probes toward the input (LVQ step)
+        // Only adapt if input is non-trivial (not a zero vector)
+        if input.norm() > 1e-8 {
+            self.adapt_probes(input);
+        }
+
+        let combined = RealHV::bundle_normalized(&[state, input]);
+        let probes = self.probes.borrow();
+        probes
+            .iter()
+            .map(|probe| RealHV::cosine_similarity(&combined, probe))
+            .collect()
+    }
+
+    fn decode_from_lnn(&self, lnn_output: &[f32], current_state: &RealHV) -> RealHV {
+        let probes = self.probes.borrow();
+        // Last value is alpha (mixing parameter)
+        let n_weights = self.n_probes - 1;
+        let raw_alpha = if n_weights < lnn_output.len() {
+            lnn_output[n_weights]
+        } else {
+            0.1
+        };
+        let alpha = crate::lnn::neuron::sigmoid(raw_alpha) * 0.5; // Keep alpha in [0, 0.5]
+
+        // Weighted sum of probes
+        let mut delta = RealHV::zero(self.hd_dim);
+        let weight_count = n_weights.min(lnn_output.len());
+        for i in 0..weight_count {
+            let scaled = probes[i].scale(lnn_output[i]);
+            delta = RealHV::add(&delta, &scaled);
+        }
+        delta.normalize();
+
+        // Mix: new_state = (1-alpha)*current + alpha*delta
+        let kept = current_state.scale(1.0 - alpha);
+        let added = delta.scale(alpha);
+        let mut result = RealHV::add(&kept, &added);
+        result.normalize();
+        result
+    }
+
+    fn name(&self) -> &str { "AdaptiveDualTrack" }
+    fn lnn_input_size(&self) -> usize { self.n_probes }
+    fn lnn_output_size(&self) -> usize { self.n_probes }
+    fn hd_dim(&self) -> usize { self.hd_dim }
+}
+
+// =============================================================================
 // Factory function
 // =============================================================================
 
@@ -588,6 +740,12 @@ pub fn create_bridge(
         BridgeStrategy::SemanticDualTrack => Box::new(SemanticDualTrackBridge::new(
             hd_dim,
             ncp_config.sensory_size,
+            rng,
+        )),
+        BridgeStrategy::AdaptiveDualTrack => Box::new(AdaptiveDualTrackBridge::new(
+            hd_dim,
+            ncp_config.sensory_size,
+            0.005, // default probe learning rate
             rng,
         )),
     }

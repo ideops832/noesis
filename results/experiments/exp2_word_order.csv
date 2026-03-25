@@ -1,11 +1,11 @@
 sentence_a,sentence_b,similarity
-"gatto mangia topo","topo mangia gatto",0.393325
-"cane insegue gatto","gatto insegue cane",0.653368
-"mamma chiama bambino","bambino chiama mamma",0.998492
-"sole scalda terra","terra scalda sole",0.420398
-"vento muove nuvola","nuvola muove vento",0.004284
-"pesce nuota mare","mare nuota pesce",0.358871
-"uccello canta albero","albero canta uccello",0.314738
+"gatto mangia topo","topo mangia gatto",0.405470
+"cane insegue gatto","gatto insegue cane",0.656624
+"mamma chiama bambino","bambino chiama mamma",0.998500
+"sole scalda terra","terra scalda sole",0.403068
+"vento muove nuvola","nuvola muove vento",-0.019019
+"pesce nuota mare","mare nuota pesce",0.373902
+"uccello canta albero","albero canta uccello",0.325673
 "cuoco prepara cena","cena prepara cuoco",0.904905
-"nonno racconta storia","storia racconta nonno",0.421768
-"fratello aiuta sorella","sorella aiuta fratello",0.477569
+"nonno racconta storia","storia racconta nonno",0.396142
+"fratello aiuta sorella","sorella aiuta fratello",0.476330

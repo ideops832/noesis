@@ -1,26 +1,26 @@
 group,sentence,top1_train,top1_sim,top2_train,top2_sim,top3_train,top3_sim
-A_creative,"il pesce dorme nella cucina","Il supermercato ha tutto per la cucina",0.373702,"Il felino corre nel giardino",0.369735,"Il cucciolo gioca con il bambino",0.359522
-A_creative,"il programmatore cucina la pasta","La nonna cucina la torta di mele",0.625685,"La ragazza cucina la pasta per gli amici",0.599612,"Il bambino mangia la pasta con il sugo",0.506371
-A_creative,"il gatto scrive un programma","Il barista prepara il caffè ogni mattina",0.072288,"L'uccello canta la mattina presto",0.071436,"Il contadino lavora nei campi ogni giorno",0.067533
-A_creative,"la nonna insegue il cane","La nonna cucina la torta di mele",0.348204,"Il gatto insegue la farfalla nel giardino",0.291222,"La nonna mangia la frutta ogni mattina",0.283536
-A_creative,"il sole mangia la neve","Il contadino lavora sotto il sole cocente",0.554795,"Il cane corre nella neve fresca e soffice",0.483870,"Il bambino gioca sotto la pioggia leggera",0.431464
-A_creative,"il cuoco programma il computer","Il caffè caldo scalda la mattina fredda",0.084744,"La collega lavora al computer tutto il giorno",0.083869,"La brina copre l'erba ogni mattina fredda",0.081330
-A_creative,"la pioggia cucina la cena","La mamma cucina la cena per la famiglia",0.566903,"La trattoria cucina ricette della nonna",0.351810,"La pioggia cade forte sulle strade",0.317402
-A_creative,"il bambino guida il treno","Il gatto si lava le zampe con cura",0.072010,"Il cielo sereno promette una bella giornata",0.071105,"Il gelato si scioglie al sole estivo",0.069328
-A_creative,"il nonno nuota nel cielo","Il nonno beve il vino rosso a tavola",0.440364,"Il gatto salta sul tavolo della cucina",0.315745,"Il nonno cucina il pesce alla griglia",0.310128
-A_creative,"il vento dorme sul divano","Il gatto dorme sul divano",0.680156,"Il felino dorme sul divano morbido",0.571549,"Il cucciolo dorme nella cuccia calda",0.512666
-B_close,"il gatto dorme nel giardino","Il gatto dorme sul divano",0.621727,"Il gatto dorme sulla sedia della nonna",0.603919,"Il felino corre nel giardino",0.537371
-B_close,"il cane corre nel prato","Il cane corre nel parco grande",0.579271,"Il cane mangia la carne nella ciotola",0.530191,"Il cane nuota nel lago profondo",0.525818
-B_close,"la mamma prepara il pranzo","La mamma assaggia la minestra calda",0.527449,"Il ragazzo prepara il panino per pranzo",0.463429,"Il papà prepara la colazione per tutti",0.449922
-B_close,"il sole splende forte","Il sole splende nel cielo azzurro",0.741488,"Il vento soffia forte tra gli alberi",0.457257,"La pioggia cade forte sulle strade",0.409309
-B_close,"il bambino gioca nel cortile","Il gatto dorme sul divano",0.677262,"Il gatto corre veloce nel prato",0.600058,"Il bambino gioca sotto la pioggia leggera",0.515337
-B_close,"il cuoco cucina il pesce","Il nonno cucina il pesce alla griglia",0.556149,"Il cuoco mangia il piatto che ha preparato",0.522850,"La nonna cucina la torta di mele",0.497068
-B_close,"la nonna racconta una storia","La nonna cucina la torta di mele",0.300804,"La nonna mangia la frutta ogni mattina",0.235149,"L'autista guida l'autobus per la città",0.153673
-B_close,"il vento soffia nel parco","Il vento soffia forte tra gli alberi",0.670863,"Il vento freddo del nord porta la neve",0.380240,"Il vento porta le foglie lungo la strada",0.359574
-B_close,"il programmatore lavora al progetto","Il programmatore corre nel parco dopo il lavoro",0.491235,"Il cuoco lavora nel ristorante del centro",0.401357,"Il team lavora insieme al progetto importante",0.396376
-B_close,"la pioggia cade leggera","La pioggia cade forte sulle strade",0.579449,"La pioggia bagna i fiori del giardino",0.529954,"Il lavoratore arriva in ufficio presto",0.244352
-C_chomsky,"le idee verdi dormono furiosamente","Il contadino lavora nei campi ogni giorno",0.075405,"Il forno sforna pane e dolci ogni giorno",0.073908,"Il pompiere spegne l'incendio nella foresta",0.070974
-C_chomsky,"la matematica viola corre veloce","Il programmatore corre nel parco dopo il lavoro",0.080682,"La carota dolce cresce nell'orto",0.075110,"Il supermercato ha tutto per la cucina",0.073230
-C_chomsky,"il silenzio azzurro mangia il tempo","Il cibo italiano è famoso nel mondo",0.070402,"La farfalla vola tra i fiori colorati",0.065317,"La grandine danneggia le colture nei campi",0.064793
-C_chomsky,"la tristezza rotonda nuota nel pensiero","Il nonno beve il vino rosso a tavola",0.125851,"Il cuoco mangia il piatto che ha preparato",0.084656,"La torta esce dal forno profumata",0.082027
-C_chomsky,"il coraggio liquido dorme sul nulla","Le nuvole grigie annunciano la pioggia",0.105184,"La farfalla vola tra i fiori colorati",0.064565,"Il panettiere sforna il pane ogni mattina",0.064161
+A_creative,"il pesce dorme nella cucina","Il supermercato ha tutto per la cucina",0.390671,"Il pesce nuota nel fiume limpido",0.374437,"Il cucciolo gioca con il bambino",0.348940
+A_creative,"il programmatore cucina la pasta","La nonna cucina la torta di mele",0.637150,"La ragazza cucina la pasta per gli amici",0.593299,"Il bambino mangia la pasta con il sugo",0.548711
+A_creative,"il gatto scrive un programma","Il dentista cura i denti dei pazienti",0.089774,"Il gatto si lava le zampe con cura",0.079019,"Il cielo sereno promette una bella giornata",0.068572
+A_creative,"la nonna insegue il cane","Il gatto insegue la farfalla nel giardino",0.312820,"La nonna cucina la torta di mele",0.300598,"La nonna mangia la frutta ogni mattina",0.255028
+A_creative,"il sole mangia la neve","Il contadino lavora sotto il sole cocente",0.552995,"Il cane corre nella neve fresca e soffice",0.460493,"Il bambino gioca sotto la pioggia leggera",0.444907
+A_creative,"il cuoco programma il computer","Il micio beve l'acqua dalla fontana",0.088645,"Il gelato si scioglie al sole estivo",0.083824,"Il ragazzo beve il succo di arancia",0.079239
+A_creative,"la pioggia cucina la cena","La mamma cucina la cena per la famiglia",0.594867,"La trattoria cucina ricette della nonna",0.332798,"La pioggia cade forte sulle strade",0.319232
+A_creative,"il bambino guida il treno","Il lupo corre nella foresta oscura",0.100207,"Lo sciatore scende dalla montagna innevata",0.088252,"Il cuoco prepara il piatto del giorno",0.078987
+A_creative,"il nonno nuota nel cielo","Il nonno beve il vino rosso a tavola",0.437827,"Il gatto salta sul tavolo della cucina",0.338569,"Il cane nuota nel lago profondo",0.337851
+A_creative,"il vento dorme sul divano","Il gatto dorme sul divano",0.696540,"Il felino dorme sul divano morbido",0.594789,"Il cucciolo dorme nella cuccia calda",0.519266
+B_close,"il gatto dorme nel giardino","Il gatto dorme sul divano",0.672049,"Il gatto dorme sulla sedia della nonna",0.639138,"Il felino corre nel giardino",0.572795
+B_close,"il cane corre nel prato","Il cane corre nel parco grande",0.580411,"Il cane nuota nel lago profondo",0.532585,"Il gatto corre veloce nel prato",0.527114
+B_close,"la mamma prepara il pranzo","La mamma assaggia la minestra calda",0.553256,"Il papà prepara la colazione per tutti",0.461217,"Il ragazzo prepara il panino per pranzo",0.439970
+B_close,"il sole splende forte","Il sole splende nel cielo azzurro",0.740736,"Il vento soffia forte tra gli alberi",0.494838,"La pioggia cade forte sulle strade",0.458968
+B_close,"il bambino gioca nel cortile","Il gatto dorme sul divano",0.691873,"Il gatto corre veloce nel prato",0.615736,"Il bambino gioca sotto la pioggia leggera",0.519118
+B_close,"il cuoco cucina il pesce","Il nonno cucina il pesce alla griglia",0.566293,"Il cuoco mangia il piatto che ha preparato",0.523735,"La nonna cucina la torta di mele",0.483256
+B_close,"la nonna racconta una storia","La nonna cucina la torta di mele",0.318015,"La nonna mangia la frutta ogni mattina",0.306513,"L'autista guida l'autobus per la città",0.196095
+B_close,"il vento soffia nel parco","Il vento soffia forte tra gli alberi",0.668651,"Il vento porta le foglie lungo la strada",0.407078,"Il vento freddo del nord porta la neve",0.398412
+B_close,"il programmatore lavora al progetto","Il programmatore corre nel parco dopo il lavoro",0.477216,"Il cuoco lavora nel ristorante del centro",0.420409,"Il team lavora insieme al progetto importante",0.402948
+B_close,"la pioggia cade leggera","La pioggia cade forte sulle strade",0.568720,"La pioggia bagna i fiori del giardino",0.532476,"Il vento freddo del nord porta la neve",0.233892
+C_chomsky,"le idee verdi dormono furiosamente","Il ricercatore pubblica i risultati dello studio",0.072634,"La temperatura sale durante il giorno",0.070304,"Le stelle brillano nel cielo limpido",0.055305
+C_chomsky,"la matematica viola corre veloce","Il turista gode il sole sulla spiaggia",0.079359,"La mamma assaggia la minestra calda",0.073135,"La tromba d'aria solleva gli oggetti in alto",0.072483
+C_chomsky,"il silenzio azzurro mangia il tempo","La dieta mediterranea è molto salutare",0.089595,"L'alluvione allaga le strade della città",0.077768,"Il micio beve l'acqua dalla fontana",0.062734
+C_chomsky,"la tristezza rotonda nuota nel pensiero","L'olio d'oliva condisce l'insalata verde",0.100034,"Il riso bolle nell'acqua salata",0.095178,"L'autunno colora le foglie di rosso e giallo",0.090030
+C_chomsky,"il coraggio liquido dorme sul nulla","Il tuono rimbomba nella valle profonda",0.067928,"Il cielo sereno promette una bella giornata",0.061673,"La ragazza cucina la pasta per gli amici",0.059928

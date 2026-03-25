@@ -74,6 +74,7 @@ mod tests {
         println!("--- Phase 1: Build trained vocabulary ---");
         let mut full_corpus = corpus::expanded_corpus();
         full_corpus.extend(corpus::synonym_parallel_corpus());
+        full_corpus.extend(corpus::relational_corpus());
         let full_sentences: Vec<Vec<String>> = full_corpus.iter().map(|s| tokenizer.tokenize(s)).collect();
 
         let vocab = build_trained_vocab(&full_sentences, 5, 0.7, 3);

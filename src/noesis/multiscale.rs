@@ -1,10 +1,11 @@
 //! Multi-scale temporal architecture.
 //!
-//! Stacks two SemanticFields with different time constants:
+//! Stacks three SemanticFields with different time constants:
 //! - **Fast field**: large dt, captures immediate context, decays quickly
+//! - **Medium field**: intermediate dt, bridges fast and slow dynamics
 //! - **Slow field**: small dt, accumulates long-term tendencies, changes slowly
 //!
-//! The output state is a weighted combination of both fields.
+//! The output state is a weighted combination of all three fields.
 
 use crate::hdc::real::RealHV;
 use crate::lnn::ncp::NCPConfig;
@@ -19,10 +20,17 @@ pub struct MultiScaleConfig {
     pub ncp_config: NCPConfig,
     /// dt for the fast field (larger = faster response).
     pub fast_dt: f32,
+    /// dt for the medium field (intermediate response speed).
+    pub medium_dt: f32,
     /// dt for the slow field (smaller = slower accumulation).
     pub slow_dt: f32,
-    /// Weight of the fast field in the combined output [0, 1].
+    /// Weight of the fast field in the combined output.
     pub fast_weight: f32,
+    /// Weight of the medium field in the combined output.
+    pub medium_weight: f32,
+    /// Weight of the slow field in the combined output.
+    /// fast_weight + medium_weight + slow_weight = 1.0
+    pub slow_weight: f32,
     /// Learning rate for slow field accumulation via bundling.
     pub slow_lr: f32,
 }
@@ -34,19 +42,23 @@ impl MultiScaleConfig {
             strategy: BridgeStrategy::InputPreserving,
             ncp_config: NCPConfig::tiny(),
             fast_dt: 0.2,
+            medium_dt: 0.02,
             slow_dt: 0.005,
-            fast_weight: 0.4,
+            fast_weight: 0.2,
+            medium_weight: 0.4,
+            slow_weight: 0.4,
             slow_lr: 0.02,
         }
     }
 }
 
-/// A multi-scale semantic field with fast and slow dynamics.
+/// A multi-scale semantic field with fast, medium, and slow dynamics.
 pub struct MultiScaleField {
     config: MultiScaleConfig,
     fast: SemanticField,
+    medium: SemanticField,
     slow: SemanticField,
-    /// Combined state: fast_weight * fast_state + (1 - fast_weight) * slow_state.
+    /// Combined state: fast_weight * fast + medium_weight * medium + slow_weight * slow.
     combined_state: RealHV,
     t: f32,
 }
@@ -61,50 +73,70 @@ impl MultiScaleField {
         );
 
         let fast = SemanticField::new(sf_config.clone(), seed);
+        let medium = SemanticField::new(sf_config.clone(), seed + 500);
         let slow = SemanticField::new(sf_config, seed + 1000);
         let combined_state = RealHV::zero(config.hd_dim);
 
         MultiScaleField {
             config,
             fast,
+            medium,
             slow,
             combined_state,
             t: 0.0,
         }
     }
 
-    /// Step both fields and combine their states.
+    /// Step all three fields and combine their states.
     ///
     /// Fast field: normal step (responds quickly via mixing).
+    /// Medium field: accumulate via bundling with medium_dt as learning rate.
     /// Slow field: accumulate via bundling (retains old inputs strongly).
     pub fn step(&mut self, input: &RealHV) -> &RealHV {
         // Fast field: normal step
         self.fast.step(input, self.config.fast_dt);
 
+        // Medium field: accumulate via bundling with medium_dt
+        let old_medium = self.medium.state().clone();
+        if old_medium.norm() < 1e-8 {
+            let mut s = input.clone();
+            s.normalize();
+            self.medium.set_state(s);
+        } else {
+            let input_norm = input.normalized();
+            let medium_lr = self.config.medium_dt;
+            let kept = old_medium.scale(1.0 - medium_lr);
+            let added = input_norm.scale(medium_lr);
+            let mut new_state = RealHV::add(&kept, &added);
+            new_state.normalize();
+            self.medium.set_state(new_state);
+        }
+
         // Slow field: accumulate via bundling
-        let old_state = self.slow.state().clone();
-        if old_state.norm() < 1e-8 {
-            // First input: just adopt it
+        let old_slow = self.slow.state().clone();
+        if old_slow.norm() < 1e-8 {
             let mut s = input.clone();
             s.normalize();
             self.slow.set_state(s);
         } else {
-            // Normalize input so it has the same scale as the (already normalized) state
             let input_norm = input.normalized();
             let slow_lr = self.config.slow_lr;
-            let kept = old_state.scale(1.0 - slow_lr);
+            let kept = old_slow.scale(1.0 - slow_lr);
             let added = input_norm.scale(slow_lr);
             let mut new_state = RealHV::add(&kept, &added);
             new_state.normalize();
             self.slow.set_state(new_state);
         }
 
-        // Combine: weighted average of both states
+        // Combine: weighted average of all three states
         let w_fast = self.config.fast_weight;
-        let w_slow = 1.0 - w_fast;
+        let w_medium = self.config.medium_weight;
+        let w_slow = self.config.slow_weight;
         let fast_contrib = self.fast.state().scale(w_fast);
+        let medium_contrib = self.medium.state().scale(w_medium);
         let slow_contrib = self.slow.state().scale(w_slow);
-        self.combined_state = RealHV::add(&fast_contrib, &slow_contrib);
+        let fast_medium = RealHV::add(&fast_contrib, &medium_contrib);
+        self.combined_state = RealHV::add(&fast_medium, &slow_contrib);
         if self.combined_state.norm() > 1e-8 {
             self.combined_state.normalize();
         }
@@ -113,16 +145,20 @@ impl MultiScaleField {
         &self.combined_state
     }
 
-    /// Idle step: no input, both fields decay.
+    /// Idle step: no input, all three fields decay.
     pub fn idle_step(&mut self) {
         self.fast.idle_step(self.config.fast_dt);
+        self.medium.idle_step(self.config.medium_dt);
         self.slow.idle_step(self.config.slow_dt);
 
         let w_fast = self.config.fast_weight;
-        let w_slow = 1.0 - w_fast;
+        let w_medium = self.config.medium_weight;
+        let w_slow = self.config.slow_weight;
         let fast_contrib = self.fast.state().scale(w_fast);
+        let medium_contrib = self.medium.state().scale(w_medium);
         let slow_contrib = self.slow.state().scale(w_slow);
-        self.combined_state = RealHV::add(&fast_contrib, &slow_contrib);
+        let fast_medium = RealHV::add(&fast_contrib, &medium_contrib);
+        self.combined_state = RealHV::add(&fast_medium, &slow_contrib);
         if self.combined_state.norm() > 1e-8 {
             self.combined_state.normalize();
         }
@@ -142,12 +178,14 @@ impl MultiScaleField {
 
     /// Access individual field states.
     pub fn fast_state(&self) -> &RealHV { self.fast.state() }
+    pub fn medium_state(&self) -> &RealHV { self.medium.state() }
     pub fn slow_state(&self) -> &RealHV { self.slow.state() }
     pub fn combined_state(&self) -> &RealHV { &self.combined_state }
 
-    /// Reset both fields.
+    /// Reset all three fields.
     pub fn reset(&mut self) {
         self.fast.reset();
+        self.medium.reset();
         self.slow.reset();
         self.combined_state = RealHV::zero(self.config.hd_dim);
         self.t = 0.0;

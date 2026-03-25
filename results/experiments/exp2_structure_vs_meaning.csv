@@ -1,11 +1,11 @@
 sentence_a,sentence_b,similarity
-"gatto mangia topo","sole scalda terra",0.008471
-"cane corre parco","pioggia bagna strada",0.064354
-"mamma cucina cena","vento muove nuvola",-0.005679
-"bambino gioca palla","treno parte stazione",-0.010105
-"pesce nuota mare","uccello vola cielo",0.052039
-"nonno racconta storia","cuoco prepara torta",0.096495
-"fratello legge libro","neve copre montagna",0.004505
-"gatto dorme divano","luna illumina notte",0.014235
-"cane beve acqua","sole tramonta sera",-0.020448
-"bambino ride forte","pioggia cade piano",-0.058283
+"gatto mangia topo","sole scalda terra",-0.021125
+"cane corre parco","pioggia bagna strada",0.057029
+"mamma cucina cena","vento muove nuvola",0.067202
+"bambino gioca palla","treno parte stazione",-0.009145
+"pesce nuota mare","uccello vola cielo",0.061272
+"nonno racconta storia","cuoco prepara torta",0.101725
+"fratello legge libro","neve copre montagna",-0.055260
+"gatto dorme divano","luna illumina notte",0.042211
+"cane beve acqua","sole tramonta sera",-0.007140
+"bambino ride forte","pioggia cade piano",0.037064

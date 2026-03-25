@@ -211,6 +211,98 @@ impl Vocabulary {
         }
     }
 
+    /// Distributional learning with momentum and directional bigrams.
+    ///
+    /// Same as `learn_from_context_momentum` but also includes directional bigrams
+    /// in the context. For each adjacent pair (w_j, w_{j+1}) in the context window,
+    /// a bigram hypervector is computed as:
+    ///   bigram_hv = bind(permute(w_j, 0), permute(w_{j+1}, 1))
+    ///
+    /// The permute ensures directionality: bind(perm(A,0), perm(B,1)) ≠ bind(perm(B,0), perm(A,1)).
+    /// Bigrams are weighted by `bigram_weight` relative to unigrams (weight 1.0).
+    pub fn learn_from_context_with_bigrams(
+        &mut self,
+        sentences: &[Vec<String>],
+        window_size: usize,
+        momentum: f32,
+        bigram_weight: f32,
+    ) {
+        use rayon::prelude::*;
+
+        // Ensure all words exist
+        for sentence in sentences {
+            for word in sentence {
+                self.get_or_create(word);
+            }
+        }
+
+        // Parallel update computation
+        let words_snapshot = &self.words;
+        let updates: Vec<(String, RealHV)> = sentences
+            .par_iter()
+            .flat_map(|sentence| {
+                if sentence.is_empty() {
+                    return Vec::new();
+                }
+                let mut local_updates = Vec::new();
+                for (i, word) in sentence.iter().enumerate() {
+                    let start = i.saturating_sub(window_size);
+                    let end = (i + window_size + 1).min(sentence.len());
+
+                    // Collect unigram context vectors (weight 1.0)
+                    let unigram_hvs: Vec<RealHV> = (start..end)
+                        .filter(|&j| j != i)
+                        .filter_map(|j| words_snapshot.get(&sentence[j]).cloned())
+                        .collect();
+
+                    // Collect directional bigram vectors from adjacent pairs in the window
+                    let mut bigram_hvs: Vec<RealHV> = Vec::new();
+                    for j in start..end.saturating_sub(1) {
+                        // Skip bigrams that include the target word itself
+                        if j == i || j + 1 == i {
+                            continue;
+                        }
+                        if let (Some(hv_left), Some(hv_right)) = (
+                            words_snapshot.get(&sentence[j]),
+                            words_snapshot.get(&sentence[j + 1]),
+                        ) {
+                            let bigram_hv = RealHV::bind(
+                                &hv_left.permute(0),
+                                &hv_right.permute(1),
+                            );
+                            bigram_hvs.push(bigram_hv);
+                        }
+                    }
+
+                    if unigram_hvs.is_empty() && bigram_hvs.is_empty() {
+                        continue;
+                    }
+
+                    // Bundle all context: unigrams at weight 1.0, bigrams at bigram_weight
+                    let mut all_ctx: Vec<RealHV> = unigram_hvs;
+                    for bg in bigram_hvs {
+                        all_ctx.push(bg.scale(bigram_weight));
+                    }
+
+                    let ctx_refs: Vec<&RealHV> = all_ctx.iter().collect();
+                    let context_bundle = RealHV::bundle_normalized(&ctx_refs);
+
+                    if let Some(old_hv) = words_snapshot.get(word) {
+                        let weighted_old = old_hv.scale(momentum);
+                        let weighted_ctx = context_bundle.scale(1.0 - momentum);
+                        let new_hv = RealHV::bundle_normalized(&[&weighted_old, &weighted_ctx]);
+                        local_updates.push((word.clone(), new_hv));
+                    }
+                }
+                local_updates
+            })
+            .collect();
+
+        for (word, hv) in updates {
+            self.words.insert(word, hv);
+        }
+    }
+
     /// Cosine similarity between two words. Returns 0.0 if either word is unknown.
     pub fn similarity(&self, word_a: &str, word_b: &str) -> f32 {
         match (self.words.get(word_a), self.words.get(word_b)) {
