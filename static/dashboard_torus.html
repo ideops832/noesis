@@ -23,9 +23,10 @@ body { background:#1a1a2e; color:#e0e0e0; font-family:system-ui,-apple-system,sa
 /* Main area */
 #main { display:flex; gap:4px; flex:1; min-height:0; }
 
-/* Left panel — grid canvas */
-#left { width:430px; min-width:430px; border:1px solid #333; border-radius:6px; background:#16162a; padding:10px; display:flex; align-items:center; justify-content:center; }
-#grid-canvas { cursor:pointer; }
+/* Left panel — torus canvas */
+#left { width:500px; min-width:500px; border:1px solid #333; border-radius:6px; background:#16162a; padding:10px; display:flex; align-items:center; justify-content:center; }
+#grid-canvas { cursor:grab; }
+#grid-canvas:active { cursor:grabbing; }
 
 /* Right panel — node details */
 #right { flex:1; border:1px solid #333; border-radius:6px; background:#16162a; padding:16px; overflow-y:auto; display:flex; flex-direction:column; gap:14px; }
@@ -81,7 +82,7 @@ body { background:#1a1a2e; color:#e0e0e0; font-family:system-ui,-apple-system,sa
   </div>
   <div id="main">
     <div id="left">
-      <canvas id="grid-canvas" width="410" height="410"></canvas>
+      <canvas id="grid-canvas" width="500" height="500"></canvas>
     </div>
     <div id="right">
       <div>
@@ -133,7 +134,21 @@ const API = 'http://localhost:8081/torus';
 const WS_URL = 'ws://localhost:8080';
 const TIMELINE_LEN = 300;
 const GRID_SIZE = 4;
-const CELL = 90, GAP = 4, GHOST = 4;
+
+// ── Torus 3D Parameters ──
+const TORUS_R = 150;  // major radius
+const TORUS_r = 60;   // minor radius
+const NODE_RADIUS = 18;
+const PERSPECTIVE_D = 500;
+
+// ── 3D Rotation State ──
+let rotationY = 0.4;   // initial Y rotation (radians)
+let rotationX = -0.3;  // initial X tilt (radians)
+let autoRotate = true;
+let isDragging = false;
+let dragStartX = 0, dragStartY = 0;
+let dragStartRotY = 0, dragStartRotX = 0;
+let animFrameId = null;
 
 // ── State ──
 let frame = null;
@@ -163,6 +178,10 @@ function catColor(cat, sim, act) {
 function catColorPure(cat) {
   const c = COLORS[cat] || COLORS.nessuno;
   return `hsl(${c.h}, ${c.s}%, ${c.l}%)`;
+}
+function catColorAlpha(cat, alpha) {
+  const c = COLORS[cat] || COLORS.nessuno;
+  return `hsla(${c.h}, ${c.s}%, ${c.l}%, ${alpha})`;
 }
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 function truncate(s, n) { return s && s.length > n ? s.slice(0, n) : (s || '---'); }
@@ -203,130 +222,345 @@ function onFrame(data) {
     couplingVal.textContent = data.coupling.toFixed(2);
   }
   pushTimeline(data);
-  drawGrid();
+  // drawing happens in animation loop
   updateDetails();
   drawTimeline();
 }
 
-// ── Grid Drawing ──
-function gridOrigin() {
-  const total = GHOST + GRID_SIZE * CELL + (GRID_SIZE - 1) * GAP + GHOST;
-  const ox = (gridCanvas.width - total) / 2 + GHOST;
-  const oy = (gridCanvas.height - total) / 2 + GHOST;
-  return { ox, oy };
-}
-function cellXY(col, row) {
-  const { ox, oy } = gridOrigin();
-  return { cx: ox + col * (CELL + GAP), cy: oy + row * (CELL + GAP) };
+// ── 3D Torus Math ──
+
+// Compute 3D position on torus for grid position (col, row)
+function torusPosition(col, row) {
+  const u = col * (2 * Math.PI / GRID_SIZE);
+  const v = row * (2 * Math.PI / GRID_SIZE);
+  const x = (TORUS_R + TORUS_r * Math.cos(v)) * Math.cos(u);
+  const y = (TORUS_R + TORUS_r * Math.cos(v)) * Math.sin(u);
+  const z = TORUS_r * Math.sin(v);
+  return { x, y, z };
 }
 
-function drawGrid() {
-  if (!frame || !frame.nodes) return;
+// Rotate point around X axis, then Y axis
+function rotatePoint(x, y, z, ry, rx) {
+  // Rotate around X axis
+  const cosX = Math.cos(rx), sinX = Math.sin(rx);
+  const y1 = y * cosX - z * sinX;
+  const z1 = y * sinX + z * cosX;
+  // Rotate around Y axis
+  const cosY = Math.cos(ry), sinY = Math.sin(ry);
+  const x2 = x * cosY - z1 * sinY;
+  const z2 = x * sinY + z1 * cosY;
+  return { x: x2, y: y1, z: z2 };
+}
+
+// Project 3D to 2D with perspective
+function project(x, y, z) {
+  const scale = PERSPECTIVE_D / (PERSPECTIVE_D + z);
+  return {
+    sx: x * scale + gridCanvas.width / 2,
+    sy: y * scale + gridCanvas.height / 2,
+    depth: z,
+    scale: scale
+  };
+}
+
+// Get projected node data for all 16 nodes
+function getProjectedNodes() {
+  if (!frame || !frame.nodes) return [];
+  const projected = [];
+  for (const node of frame.nodes) {
+    const row = node.y !== undefined ? node.y : Math.floor(node.id / GRID_SIZE);
+    const col = node.x !== undefined ? node.x : node.id % GRID_SIZE;
+    const pos3d = torusPosition(col, row);
+    const rotated = rotatePoint(pos3d.x, pos3d.y, pos3d.z, rotationY, rotationX);
+    const proj = project(rotated.x, rotated.y, rotated.z);
+    projected.push({
+      node,
+      col, row,
+      rx: rotated.x, ry: rotated.y, rz: rotated.z,
+      sx: proj.sx, sy: proj.sy,
+      depth: proj.depth,
+      scale: proj.scale
+    });
+  }
+  return projected;
+}
+
+// ── Torus Surface Mesh ──
+// Generate intermediate points on the torus surface for mesh rendering
+function torusSurfacePoint(uFrac, vFrac) {
+  const u = uFrac * 2 * Math.PI;
+  const v = vFrac * 2 * Math.PI;
+  const x = (TORUS_R + TORUS_r * Math.cos(v)) * Math.cos(u);
+  const y = (TORUS_R + TORUS_r * Math.cos(v)) * Math.sin(u);
+  const z = TORUS_r * Math.sin(v);
+  return { x, y, z };
+}
+
+// ── 3D Torus Drawing ──
+function drawTorus() {
   const ctx = gridCtx;
   const W = gridCanvas.width, H = gridCanvas.height;
   ctx.clearRect(0, 0, W, H);
 
-  const { ox, oy } = gridOrigin();
-  const gridW = GRID_SIZE * CELL + (GRID_SIZE - 1) * GAP;
-  const gridH = gridW;
-
-  // Ghost borders (wrap-around indicators)
-  for (let c = 0; c < GRID_SIZE; c++) {
-    // Top ghost = bottom row
-    const botNode = frame.nodes[(GRID_SIZE - 1) * GRID_SIZE + c];
-    const topNode = frame.nodes[c];
-    // Bottom ghost = top row
-    const { cx: tx } = cellXY(c, 0);
-    const { cx: bx } = cellXY(c, GRID_SIZE - 1);
-    ctx.fillStyle = catColor(botNode.category, botNode.dominant_similarity, botNode.activation * 0.5);
-    ctx.fillRect(tx, oy - GHOST, CELL, GHOST);
-    ctx.fillStyle = catColor(topNode.category, topNode.dominant_similarity, topNode.activation * 0.5);
-    ctx.fillRect(bx, oy + gridH, CELL, GHOST);
-  }
-  for (let r = 0; r < GRID_SIZE; r++) {
-    // Left ghost = right col
-    const rightNode = frame.nodes[r * GRID_SIZE + GRID_SIZE - 1];
-    const leftNode = frame.nodes[r * GRID_SIZE];
-    const { cy: ly } = cellXY(0, r);
-    const { cy: ry } = cellXY(GRID_SIZE - 1, r);
-    ctx.fillStyle = catColor(rightNode.category, rightNode.dominant_similarity, rightNode.activation * 0.5);
-    ctx.fillRect(ox - GHOST, ly, GHOST, CELL);
-    ctx.fillStyle = catColor(leftNode.category, leftNode.dominant_similarity, leftNode.activation * 0.5);
-    ctx.fillRect(ox + gridW, ry, GHOST, CELL);
+  // Draw wireframe mesh of torus surface
+  const meshU = 32, meshV = 16;
+  const meshPoints = [];
+  for (let i = 0; i <= meshU; i++) {
+    meshPoints[i] = [];
+    for (let j = 0; j <= meshV; j++) {
+      const pt = torusSurfacePoint(i / meshU, j / meshV);
+      const rot = rotatePoint(pt.x, pt.y, pt.z, rotationY, rotationX);
+      const proj = project(rot.x, rot.y, rot.z);
+      meshPoints[i][j] = { sx: proj.sx, sy: proj.sy, depth: proj.depth, scale: proj.scale };
+    }
   }
 
-  // Cells
-  for (const node of frame.nodes) {
-    const r = node.y !== undefined ? node.y : Math.floor(node.id / GRID_SIZE);
-    const c = node.x !== undefined ? node.x : node.id % GRID_SIZE;
-    const { cx, cy } = cellXY(c, r);
+  // Draw filled quad patches sorted by depth (back to front)
+  const quads = [];
+  for (let i = 0; i < meshU; i++) {
+    for (let j = 0; j < meshV; j++) {
+      const p00 = meshPoints[i][j];
+      const p10 = meshPoints[i + 1][j];
+      const p11 = meshPoints[i + 1][j + 1];
+      const p01 = meshPoints[i][j + 1];
+      const avgDepth = (p00.depth + p10.depth + p11.depth + p01.depth) / 4;
 
-    // Fill
-    ctx.fillStyle = catColor(node.category, node.dominant_similarity, node.activation);
-    ctx.fillRect(cx, cy, CELL, CELL);
+      // Find which grid cell this quad belongs to for coloring
+      const uMid = (i + 0.5) / meshU;
+      const vMid = (j + 0.5) / meshV;
+      const gridCol = Math.floor(uMid * GRID_SIZE) % GRID_SIZE;
+      const gridRow = Math.floor(vMid * GRID_SIZE) % GRID_SIZE;
+
+      quads.push({ p00, p10, p11, p01, avgDepth, gridCol, gridRow });
+    }
+  }
+  quads.sort((a, b) => b.avgDepth - a.avgDepth); // back to front
+
+  for (const q of quads) {
+    let fillColor = 'rgba(30, 30, 60, 0.4)';
+    let strokeColor = 'rgba(80, 80, 140, 0.15)';
+
+    if (frame && frame.nodes) {
+      const nodeIdx = q.gridRow * GRID_SIZE + q.gridCol;
+      const node = frame.nodes.find(n => {
+        const r = n.y !== undefined ? n.y : Math.floor(n.id / GRID_SIZE);
+        const c = n.x !== undefined ? n.x : n.id % GRID_SIZE;
+        return r === q.gridRow && c === q.gridCol;
+      });
+      if (node) {
+        const cat = node.category || 'nessuno';
+        const sim = node.dominant_similarity || 0;
+        const act = node.activation || 0;
+        // Depth-based shading: patches further away are darker
+        const depthFactor = clamp(0.3 + 0.7 * (1 - (q.avgDepth + 250) / 500), 0.1, 1.0);
+        const alpha = 0.25 * depthFactor * Math.max(0.3, sim);
+        fillColor = catColorAlpha(cat, alpha);
+        strokeColor = `rgba(100, 100, 160, ${0.12 * depthFactor})`;
+      }
+    }
+
+    ctx.beginPath();
+    ctx.moveTo(q.p00.sx, q.p00.sy);
+    ctx.lineTo(q.p10.sx, q.p10.sy);
+    ctx.lineTo(q.p11.sx, q.p11.sy);
+    ctx.lineTo(q.p01.sx, q.p01.sy);
+    ctx.closePath();
+    ctx.fillStyle = fillColor;
+    ctx.fill();
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = 0.5;
+    ctx.stroke();
+  }
+
+  // Get projected nodes
+  const projected = getProjectedNodes();
+  if (projected.length === 0) {
+    // Draw empty torus label
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.font = '14px system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Waiting for torus data...', W / 2, H / 2);
+    return;
+  }
+
+  // Draw connections between neighboring nodes (lines)
+  // Each node connects to its 4 neighbors on the torus grid (with wrapping)
+  ctx.lineWidth = 1.5;
+  for (const pn of projected) {
+    const col = pn.col, row = pn.row;
+    // Right neighbor
+    const rightCol = (col + 1) % GRID_SIZE;
+    const rightNeighbor = projected.find(p => p.col === rightCol && p.row === row);
+    // Down neighbor
+    const downRow = (row + 1) % GRID_SIZE;
+    const downNeighbor = projected.find(p => p.col === col && p.row === downRow);
+
+    const neighbors = [rightNeighbor, downNeighbor];
+    for (const nb of neighbors) {
+      if (!nb) continue;
+      const agr = Math.max(pn.node.neighbor_agreement || 0, nb.node.neighbor_agreement || 0);
+      const avgDepth = (pn.depth + nb.depth) / 2;
+      const depthAlpha = clamp(0.3 + 0.7 * (1 - (avgDepth + 250) / 500), 0.1, 1.0);
+      const alpha = (0.15 + agr * 0.5) * depthAlpha;
+      ctx.strokeStyle = `rgba(180, 180, 255, ${alpha})`;
+      ctx.beginPath();
+      ctx.moveTo(pn.sx, pn.sy);
+      ctx.lineTo(nb.sx, nb.sy);
+      ctx.stroke();
+    }
+  }
+
+  // Sort nodes by depth (back to front) for correct overlap
+  projected.sort((a, b) => b.depth - a.depth);
+
+  // Draw nodes
+  for (const pn of projected) {
+    const node = pn.node;
+    const r = NODE_RADIUS * pn.scale;
+    const sim = node.dominant_similarity || 0;
+    const act = node.activation || 0;
+
+    // Depth-based brightness
+    const depthFactor = clamp(0.4 + 0.6 * (1 - (pn.depth + 250) / 500), 0.2, 1.0);
+
+    // Node circle shadow
+    ctx.beginPath();
+    ctx.arc(pn.sx + 2, pn.sy + 2, r + 1, 0, 2 * Math.PI);
+    ctx.fillStyle = `rgba(0, 0, 0, ${0.3 * depthFactor})`;
+    ctx.fill();
+
+    // Node circle
+    ctx.beginPath();
+    ctx.arc(pn.sx, pn.sy, r, 0, 2 * Math.PI);
+    ctx.fillStyle = catColor(node.category, sim, Math.max(0.3, act) * depthFactor);
+    ctx.fill();
 
     // Border based on neighbor_agreement
     const agr = node.neighbor_agreement || 0;
     if (agr > 0.5) {
-      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = `rgba(255,255,255,${0.6 * depthFactor})`;
+      ctx.lineWidth = 1.5 * pn.scale;
     } else if (agr < 0.3) {
-      ctx.strokeStyle = 'rgba(0,0,0,0.8)';
-      ctx.lineWidth = 3;
+      ctx.strokeStyle = `rgba(0,0,0,${0.7 * depthFactor})`;
+      ctx.lineWidth = 2.5 * pn.scale;
     } else {
-      ctx.strokeStyle = 'rgba(100,100,100,0.4)';
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = `rgba(100,100,100,${0.5 * depthFactor})`;
+      ctx.lineWidth = 1 * pn.scale;
     }
-    ctx.strokeRect(cx, cy, CELL, CELL);
+    ctx.stroke();
 
     // Selected highlight
     if (selectedNode === node.id) {
-      ctx.save();
+      ctx.beginPath();
+      ctx.arc(pn.sx, pn.sy, r + 4 * pn.scale, 0, 2 * Math.PI);
       ctx.strokeStyle = '#fff';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(cx - 1, cy - 1, CELL + 2, CELL + 2);
-      ctx.restore();
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+      // Glow
+      ctx.beginPath();
+      ctx.arc(pn.sx, pn.sy, r + 6 * pn.scale, 0, 2 * Math.PI);
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+      ctx.lineWidth = 3;
+      ctx.stroke();
     }
 
-    // Text
-    ctx.fillStyle = '#fff';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    // ID
-    ctx.font = '10px system-ui';
-    ctx.fillText('N' + node.id, cx + CELL / 2, cy + 4);
-    // Dominant concept
-    ctx.font = 'bold 13px system-ui';
-    ctx.fillText(truncate(node.dominant_concept, 7), cx + CELL / 2, cy + 32);
-    // Similarity
-    ctx.font = '11px system-ui';
-    ctx.fillStyle = 'rgba(255,255,255,0.7)';
-    ctx.fillText((node.dominant_similarity || 0).toFixed(2), cx + CELL / 2, cy + 52);
-    // Category small
-    ctx.font = '9px system-ui';
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
-    ctx.fillText(truncate(node.category, 7), cx + CELL / 2, cy + 72);
+    // Text: only draw if node is facing somewhat forward and large enough
+    if (depthFactor > 0.35 && r > 10) {
+      ctx.fillStyle = `rgba(255,255,255,${depthFactor})`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      // Node ID
+      ctx.font = `${Math.round(9 * pn.scale)}px system-ui`;
+      ctx.fillText('N' + node.id, pn.sx, pn.sy - r * 0.35);
+      // Dominant concept
+      ctx.font = `bold ${Math.round(11 * pn.scale)}px system-ui`;
+      ctx.fillText(truncate(node.dominant_concept, 6), pn.sx, pn.sy + r * 0.15);
+      // Similarity value
+      if (r > 14) {
+        ctx.font = `${Math.round(8 * pn.scale)}px system-ui`;
+        ctx.fillStyle = `rgba(255,255,255,${0.7 * depthFactor})`;
+        ctx.fillText((sim).toFixed(2), pn.sx, pn.sy + r * 0.6);
+      }
+    }
   }
 }
 
-// Click handler
+// ── Animation Loop ──
+function animate() {
+  if (autoRotate && !isDragging) {
+    rotationY += 0.005;
+  }
+  drawTorus();
+  animFrameId = requestAnimationFrame(animate);
+}
+
+// ── Mouse Interaction ──
+gridCanvas.addEventListener('mousedown', (e) => {
+  isDragging = true;
+  dragStartX = e.clientX;
+  dragStartY = e.clientY;
+  dragStartRotY = rotationY;
+  dragStartRotX = rotationX;
+  autoRotate = false;
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (!isDragging) return;
+  const dx = e.clientX - dragStartX;
+  const dy = e.clientY - dragStartY;
+  rotationY = dragStartRotY + dx * 0.01;
+  rotationX = dragStartRotX + dy * 0.01;
+  // Clamp X rotation to prevent flipping
+  rotationX = clamp(rotationX, -Math.PI / 2, Math.PI / 2);
+});
+
+window.addEventListener('mouseup', () => {
+  if (isDragging) {
+    isDragging = false;
+    // Resume auto-rotation after 3 seconds of no interaction
+    setTimeout(() => { if (!isDragging) autoRotate = true; }, 3000);
+  }
+});
+
+// Click to select node
 gridCanvas.addEventListener('click', (e) => {
   if (!frame) return;
   const rect = gridCanvas.getBoundingClientRect();
   const mx = (e.clientX - rect.left) * (gridCanvas.width / rect.width);
   const my = (e.clientY - rect.top) * (gridCanvas.height / rect.height);
-  for (const node of frame.nodes) {
-    const r = node.y !== undefined ? node.y : Math.floor(node.id / GRID_SIZE);
-    const c = node.x !== undefined ? node.x : node.id % GRID_SIZE;
-    const { cx, cy } = cellXY(c, r);
-    if (mx >= cx && mx <= cx + CELL && my >= cy && my <= cy + CELL) {
-      selectedNode = node.id;
-      drawGrid();
-      updateDetails();
-      return;
+
+  const projected = getProjectedNodes();
+  let closest = null;
+  let closestDist = Infinity;
+  for (const pn of projected) {
+    const r = NODE_RADIUS * pn.scale;
+    const dx = mx - pn.sx, dy = my - pn.sy;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < r + 5 && dist < closestDist) {
+      closest = pn;
+      closestDist = dist;
     }
   }
+  if (closest) {
+    selectedNode = closest.node.id;
+    updateDetails();
+  }
 });
+
+// Prevent drag from triggering click unintentionally handled by checking distance
+let clickStartX = 0, clickStartY = 0;
+gridCanvas.addEventListener('mousedown', (e) => {
+  clickStartX = e.clientX;
+  clickStartY = e.clientY;
+});
+gridCanvas.addEventListener('click', (e) => {
+  const dx = e.clientX - clickStartX;
+  const dy = e.clientY - clickStartY;
+  if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+    e.stopImmediatePropagation();
+  }
+}, true);
 
 // ── Detail Panel ──
 function updateDetails() {
@@ -584,7 +818,9 @@ document.getElementById('btn-demo').addEventListener('click', runDemo);
 
 // ── Init ──
 wsConnect();
-log('NOESIS Proto 3 Torus Dashboard ready', 'log-info');
+animate(); // Start the 3D animation loop
+log('NOESIS Proto 3 Torus Dashboard ready (3D view)', 'log-info');
+log('Drag to rotate | Auto-rotates after 3s idle', 'log-info');
 log('Commands: feed N "text", feed all "text", query N "text", coupling VAL, reset, topo, zones, sleep N, demo', 'log-info');
 </script>
 </body>
