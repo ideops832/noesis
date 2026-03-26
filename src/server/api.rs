@@ -22,35 +22,30 @@ pub struct HttpRequest {
 
 /// Parse an HTTP request from a TcpStream.
 pub fn parse_request(stream: &mut TcpStream) -> Option<HttpRequest> {
+    // Read initial data (headers + possibly partial body)
+    let mut data = Vec::with_capacity(8192);
     let mut buf = [0u8; 8192];
     let n = match stream.read(&mut buf) {
         Ok(n) if n > 0 => n,
         _ => return None,
     };
+    data.extend_from_slice(&buf[..n]);
 
-    let raw = match std::str::from_utf8(&buf[..n]) {
-        Ok(s) => s,
+    let raw = match std::str::from_utf8(&data) {
+        Ok(s) => s.to_string(),
         Err(_) => return None,
     };
 
     // Parse request line
-    let mut lines = raw.lines();
-    let request_line = lines.next()?;
+    let request_line = raw.lines().next()?;
     let mut parts = request_line.split_whitespace();
     let method = parts.next()?.to_string();
     let path = parts.next()?.to_string();
 
-    // Find Content-Length for body
+    // Find Content-Length
     let mut content_length: usize = 0;
-    let mut header_end = false;
     for line in raw.lines() {
-        if header_end {
-            break;
-        }
-        if line.is_empty() {
-            header_end = true;
-            continue;
-        }
+        if line.is_empty() { break; }
         if line.to_lowercase().starts_with("content-length:") {
             if let Some(len_str) = line.splitn(2, ':').nth(1) {
                 content_length = len_str.trim().parse().unwrap_or(0);
@@ -58,23 +53,33 @@ pub fn parse_request(stream: &mut TcpStream) -> Option<HttpRequest> {
         }
     }
 
-    // Extract body (everything after the blank line)
-    let body = if let Some(pos) = raw.find("\r\n\r\n") {
-        let body_start = pos + 4;
-        if body_start < raw.len() {
-            raw[body_start..].to_string()
-        } else {
-            String::new()
-        }
-    } else if let Some(pos) = raw.find("\n\n") {
-        let body_start = pos + 2;
-        if body_start < raw.len() {
-            raw[body_start..].to_string()
-        } else {
-            String::new()
-        }
+    // Find header-body boundary
+    let header_end_pos = raw.find("\r\n\r\n").map(|p| p + 4)
+        .or_else(|| raw.find("\n\n").map(|p| p + 2))
+        .unwrap_or(raw.len());
+
+    // Read remaining body if Content-Length says we're missing data
+    let body_so_far = if header_end_pos < raw.len() {
+        raw[header_end_pos..].to_string()
     } else {
         String::new()
+    };
+
+    let body = if content_length > 0 && body_so_far.len() < content_length {
+        // Need to read more data
+        let mut full_body = body_so_far.into_bytes();
+        let remaining = content_length - full_body.len();
+        let mut extra = vec![0u8; remaining];
+        let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(2)));
+        match stream.read_exact(&mut extra) {
+            Ok(_) => {
+                full_body.extend_from_slice(&extra);
+                String::from_utf8(full_body).unwrap_or_default()
+            }
+            Err(_) => String::from_utf8(full_body).unwrap_or_default(),
+        }
+    } else {
+        body_so_far
     };
 
     // Truncate body to content_length if specified
@@ -177,11 +182,16 @@ fn extract_json_int(body: &str, field: &str) -> Option<usize> {
 /// Listens on the given port and dispatches commands to the main loop
 /// via the provided channel.
 pub fn start_api_server(port: u16, cmd_tx: Sender<ApiCommand>) {
-    let listener = match TcpListener::bind(format!("0.0.0.0:{}", port)) {
-        Ok(l) => l,
+    let addr = format!("0.0.0.0:{}", port);
+    let listener = match TcpListener::bind(&addr) {
+        Ok(l) => {
+            println!("[API] Listening on {}", addr);
+            l
+        }
         Err(e) => {
-            eprintln!("[API] Failed to bind port {}: {}", port, e);
-            return;
+            eprintln!("\n[ERROR] Cannot bind API port {}: {}", port, e);
+            eprintln!("  Hint: kill previous instance with: lsof -ti:{} | xargs kill -9\n", port);
+            std::process::exit(1);
         }
     };
 

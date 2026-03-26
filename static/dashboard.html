@@ -352,11 +352,10 @@ function parseAndRun(input) {
   const queryMatch = raw.match(/^query\s+["']?(.+?)["']?$/);
   if (queryMatch) { sendCommand('query', queryMatch[1]); return; }
 
-  // Try as generic command
-  const parts = raw.split(/\s+/);
-  const cmd = parts[0];
-  const arg = parts.slice(1).join(' ').replace(/^["']|["']$/g, '');
-  sendCommand(cmd, arg || undefined);
+  // Default: treat unrecognized input as "feed" (implicit feed)
+  const cleanText = raw.replace(/^["']|["']$/g, '');
+  logMsg('(auto-feed: "' + cleanText + '")', 'log-info');
+  sendCommand('feed', cleanText);
 }
 
 cmdInput.addEventListener('keydown', (e) => {

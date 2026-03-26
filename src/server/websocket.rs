@@ -202,11 +202,16 @@ pub fn start_ws_server(port: u16) -> (std::thread::JoinHandle<()>, WsSender) {
     let clients_clone = Arc::clone(&clients);
 
     let handle = std::thread::spawn(move || {
-        let listener = match TcpListener::bind(format!("0.0.0.0:{}", port)) {
-            Ok(l) => l,
+        let addr = format!("0.0.0.0:{}", port);
+        let listener = match TcpListener::bind(&addr) {
+            Ok(l) => {
+                println!("[WS] Listening on {}", addr);
+                l
+            }
             Err(e) => {
-                eprintln!("[WS] Failed to bind port {}: {}", port, e);
-                return;
+                eprintln!("\n[ERROR] Cannot bind WebSocket port {}: {}", port, e);
+                eprintln!("  Hint: kill previous instance with: lsof -ti:{} | xargs kill -9\n", port);
+                std::process::exit(1);
             }
         };
 
