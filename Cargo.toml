@@ -15,6 +15,10 @@ thiserror = "1"
 [dev-dependencies]
 criterion = "0.5"
 
+[[bin]]
+name = "noesis_server"
+path = "src/bin/noesis_server.rs"
+
 [[bench]]
 name = "hdc_bench"
 harness = false

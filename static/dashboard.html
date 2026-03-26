@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOESIS Proto 1</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#1a1a2e; color:#e0e0e0; font-family:system-ui,-apple-system,sans-serif; overflow:hidden; height:100vh; }
+#app { display:flex; flex-direction:column; height:100vh; max-width:1400px; margin:0 auto; padding:8px; gap:4px; }
+
+/* Header */
+#header { display:flex; justify-content:space-between; align-items:center; padding:10px 16px; border:1px solid #333; border-radius:6px; background:#16162a; }
+#header h1 { font-size:18px; font-weight:700; letter-spacing:1px; }
+#conn { display:flex; align-items:center; gap:8px; font-size:13px; }
+#conn-dot { width:10px; height:10px; border-radius:50%; background:#f44; transition:background .3s; }
+#conn-dot.on { background:#4caf50; }
+
+/* Main area */
+#main { display:flex; gap:4px; flex:1; min-height:0; }
+
+/* Left panel */
+#left { width:240px; min-width:240px; border:1px solid #333; border-radius:6px; background:#16162a; padding:16px; display:flex; flex-direction:column; align-items:center; gap:8px; }
+#concept-canvas { border-radius:8px; }
+#dominant-label { font-size:16px; font-weight:600; text-align:center; }
+#dominant-cat { font-size:12px; color:#aaa; text-align:center; }
+
+/* Right panel */
+#right { flex:1; border:1px solid #333; border-radius:6px; background:#16162a; padding:16px; overflow-y:auto; display:flex; flex-direction:column; gap:16px; }
+.section-title { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:#888; margin-bottom:8px; }
+.bar-row { display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:13px; }
+.bar-label { width:70px; text-align:right; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.bar-track { flex:1; height:18px; background:#222; border-radius:3px; overflow:hidden; position:relative; }
+.bar-fill { height:100%; border-radius:3px; transition:width .3s ease, background .3s ease; min-width:0; }
+.bar-val { width:40px; text-align:right; font-size:12px; font-variant-numeric:tabular-nums; }
+
+/* Timeline */
+#timeline-wrap { border:1px solid #333; border-radius:6px; background:#16162a; padding:6px; height:72px; min-height:72px; }
+#timeline-canvas { width:100%; height:100%; display:block; }
+
+/* Console */
+#console { border:1px solid #333; border-radius:6px; background:#16162a; display:flex; flex-direction:column; height:160px; min-height:120px; }
+#console-header { display:flex; justify-content:space-between; align-items:center; padding:6px 12px; border-bottom:1px solid #333; }
+#console-header span { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:#888; }
+#btn-demo { background:#2a2a4a; border:1px solid #555; color:#e0e0e0; padding:3px 12px; border-radius:4px; cursor:pointer; font-size:12px; }
+#btn-demo:hover { background:#3a3a5a; }
+#console-log { flex:1; overflow-y:auto; padding:6px 12px; font-family:'Courier New',monospace; font-size:12px; line-height:1.6; }
+.log-cmd { color:#4fc3f7; }
+.log-ok { color:#66bb6a; }
+.log-err { color:#ef5350; }
+.log-info { color:#aaa; }
+#console-input-wrap { display:flex; align-items:center; padding:4px 12px; border-top:1px solid #333; }
+#console-input-wrap::before { content:'> '; font-family:'Courier New',monospace; color:#4fc3f7; font-size:13px; }
+#cmd-input { flex:1; background:transparent; border:none; outline:none; color:#e0e0e0; font-family:'Courier New',monospace; font-size:13px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="header">
+    <h1>NOESIS Proto 1</h1>
+    <div id="conn"><span id="conn-text">Disconnected</span><div id="conn-dot"></div></div>
+  </div>
+  <div id="main">
+    <div id="left">
+      <canvas id="concept-canvas" width="200" height="200"></canvas>
+      <div id="dominant-label">---</div>
+      <div id="dominant-cat">nessuno</div>
+    </div>
+    <div id="right">
+      <div>
+        <div class="section-title">Top Concetti</div>
+        <div id="concepts-bars"></div>
+      </div>
+      <div>
+        <div class="section-title">Metriche</div>
+        <div id="metrics-bars"></div>
+      </div>
+      <div>
+        <div class="section-title">Scale Temporali</div>
+        <div id="scales-bars"></div>
+      </div>
+    </div>
+  </div>
+  <div id="timeline-wrap"><canvas id="timeline-canvas"></canvas></div>
+  <div id="console">
+    <div id="console-header"><span>Console</span><button id="btn-demo">Demo</button></div>
+    <div id="console-log"></div>
+    <div id="console-input-wrap"><input id="cmd-input" type="text" placeholder="feed &quot;il gatto dorme&quot;" autocomplete="off"></div>
+  </div>
+</div>
+
+<script>
+// --- Color definitions ---
+const COLORS = {
+  animali:  {h:15,  s:80, l:55},
+  cibo:     {h:140, s:70, l:45},
+  lavoro:   {h:220, s:75, l:55},
+  natura:   {h:180, s:65, l:45},
+  famiglia: {h:45,  s:85, l:55},
+  altro:    {h:260, s:40, l:50},
+  nessuno:  {h:0,   s:0,  l:40},
+};
+
+function catColor(cat, alpha) {
+  const c = COLORS[cat] || COLORS.nessuno;
+  return alpha !== undefined ? `hsla(${c.h},${c.s}%,${c.l}%,${alpha})` : `hsl(${c.h},${c.s}%,${c.l}%)`;
+}
+function lerpHSL(a, b, t) {
+  // shortest arc hue lerp
+  let dh = b.h - a.h;
+  if (dh > 180) dh -= 360; if (dh < -180) dh += 360;
+  return { h: (a.h + dh * t + 360) % 360, s: a.s + (b.s - a.s) * t, l: a.l + (b.l - a.l) * t };
+}
+
+// --- State ---
+let ws = null;
+let state = null;
+const timeline = []; // {category, coherence}
+const MAX_TIMELINE = 500;
+const logEntries = [];
+const MAX_LOG = 50;
+
+// Smooth color transition state
+let currentHSL = { ...COLORS.nessuno };
+let targetHSL = { ...COLORS.nessuno };
+let colorTransStart = 0;
+const COLOR_TRANS_MS = 500;
+let currentCat = 'nessuno';
+
+// Pulse animation
+let pulsePhase = 0;
+
+// --- WebSocket ---
+function connectWS() {
+  if (ws && ws.readyState <= 1) return;
+  ws = new WebSocket('ws://localhost:8080');
+  ws.onopen = () => { setConnected(true); };
+  ws.onclose = () => { setConnected(false); setTimeout(connectWS, 3000); };
+  ws.onerror = () => { ws.close(); };
+  ws.onmessage = (e) => {
+    try { state = JSON.parse(e.data); onFrame(); } catch(err) {}
+  };
+}
+
+function setConnected(on) {
+  document.getElementById('conn-dot').classList.toggle('on', on);
+  document.getElementById('conn-text').textContent = on ? 'Connected' : 'Disconnected';
+}
+
+// --- Render ---
+function onFrame() {
+  if (!state) return;
+  const fs = state.field_state || {};
+  const sc = state.salient_concepts || [];
+  const m = state.metrics || {};
+
+  // Update dominant concept square
+  const newCat = fs.category || 'nessuno';
+  if (newCat !== currentCat) {
+    currentHSL = lerpHSL(currentHSL, targetHSL, Math.min(1, (performance.now() - colorTransStart) / COLOR_TRANS_MS));
+    targetHSL = { ...(COLORS[newCat] || COLORS.nessuno) };
+    colorTransStart = performance.now();
+    currentCat = newCat;
+  }
+
+  document.getElementById('dominant-label').textContent =
+    `${fs.dominant_concept || '---'} (${(fs.dominant_similarity || 0).toFixed(2)})`;
+  document.getElementById('dominant-cat').textContent = newCat;
+
+  // Top concepts bars
+  renderBars('concepts-bars', sc.slice(0, 10).map(c => ({
+    label: c.word, value: c.similarity, color: catColor(c.category || 'altro')
+  })));
+
+  // Metrics
+  renderBars('metrics-bars', [
+    { label: 'Coerenza', value: m.coherence || 0, color: metricColor('coherence', m.coherence || 0) },
+    { label: 'Novita', value: m.novelty || 0, color: metricGradient(m.novelty || 0, '#888', '#ff9800') },
+    { label: 'Velocita', value: fs.velocity || 0, color: metricGradient(fs.velocity || 0, '#888', '#f44336') },
+  ]);
+
+  // Scales
+  renderBars('scales-bars', [
+    { label: 'Fast', value: fs.fast_activation || 0, color: '#4fc3f7' },
+    { label: 'Medium', value: fs.medium_activation || 0, color: '#5c6bc0' },
+    { label: 'Slow', value: fs.slow_activation || 0, color: '#ab47bc' },
+  ]);
+
+  // Timeline
+  timeline.push({ category: newCat, coherence: m.coherence || 0 });
+  if (timeline.length > MAX_TIMELINE) timeline.shift();
+  drawTimeline();
+}
+
+function metricColor(type, v) {
+  if (v > 0.7) return '#66bb6a';
+  if (v > 0.4) return '#fdd835';
+  return '#ef5350';
+}
+
+function metricGradient(v, from, to) {
+  // simple: just return the 'to' color at varying lightness
+  return v > 0.5 ? to : v > 0.2 ? to + 'aa' : from;
+}
+
+function renderBars(id, items) {
+  const container = document.getElementById(id);
+  // Reuse or rebuild DOM
+  while (container.children.length > items.length) container.lastChild.remove();
+  while (container.children.length < items.length) {
+    const row = document.createElement('div'); row.className = 'bar-row';
+    row.innerHTML = '<div class="bar-label"></div><div class="bar-track"><div class="bar-fill"></div></div><div class="bar-val"></div>';
+    container.appendChild(row);
+  }
+  items.forEach((item, i) => {
+    const row = container.children[i];
+    row.querySelector('.bar-label').textContent = item.label;
+    const fill = row.querySelector('.bar-fill');
+    fill.style.width = (Math.max(0, Math.min(1, item.value)) * 100) + '%';
+    fill.style.background = item.color;
+    row.querySelector('.bar-val').textContent = item.value.toFixed(2);
+  });
+}
+
+// --- Concept canvas ---
+const cCanvas = document.getElementById('concept-canvas');
+const cCtx = cCanvas.getContext('2d');
+
+function drawConceptSquare() {
+  const now = performance.now();
+  const t = Math.min(1, (now - colorTransStart) / COLOR_TRANS_MS);
+  const c = lerpHSL(currentHSL, targetHSL, t);
+
+  const sim = state ? (state.field_state?.dominant_similarity || 0) : 0;
+  const vel = state ? (state.field_state?.velocity || 0) : 0;
+  const word = state ? (state.field_state?.dominant_concept || '---') : '---';
+
+  // Pulse
+  let scale = 1;
+  if (vel > 0.3) {
+    pulsePhase += 0.04; // ~2Hz at 50fps
+    scale = 1 + 0.03 * Math.sin(pulsePhase * Math.PI);
+  } else {
+    pulsePhase = 0;
+  }
+
+  cCtx.clearRect(0, 0, 200, 200);
+  cCtx.save();
+  cCtx.translate(100, 100);
+  cCtx.scale(scale, scale);
+  cCtx.translate(-100, -100);
+
+  // Background with opacity
+  const alpha = 0.3 + sim * 0.7;
+  cCtx.fillStyle = `hsla(${c.h},${c.s}%,${c.l}%,${alpha})`;
+  cCtx.beginPath();
+  cCtx.roundRect(0, 0, 200, 200, 12);
+  cCtx.fill();
+
+  // Border
+  cCtx.strokeStyle = `hsl(${c.h},${c.s}%,${c.l}%)`;
+  cCtx.lineWidth = 2;
+  cCtx.beginPath();
+  cCtx.roundRect(0, 0, 200, 200, 12);
+  cCtx.stroke();
+
+  // Text
+  cCtx.fillStyle = '#fff';
+  cCtx.font = 'bold 28px system-ui, sans-serif';
+  cCtx.textAlign = 'center';
+  cCtx.textBaseline = 'middle';
+  cCtx.fillText(word, 100, 100);
+
+  cCtx.restore();
+  requestAnimationFrame(drawConceptSquare);
+}
+requestAnimationFrame(drawConceptSquare);
+
+// --- Timeline canvas ---
+const tCanvas = document.getElementById('timeline-canvas');
+const tCtx = tCanvas.getContext('2d');
+
+function drawTimeline() {
+  const w = tCanvas.parentElement.clientWidth - 12;
+  const h = tCanvas.parentElement.clientHeight - 12;
+  tCanvas.width = w; tCanvas.height = h;
+  tCtx.clearRect(0, 0, w, h);
+
+  const colW = Math.max(1, w / MAX_TIMELINE);
+  const startX = w - timeline.length * colW;
+
+  for (let i = 0; i < timeline.length; i++) {
+    const d = timeline[i];
+    const barH = Math.max(2, d.coherence * h);
+    tCtx.fillStyle = catColor(d.category, 0.8);
+    tCtx.fillRect(startX + i * colW, h - barH, Math.ceil(colW), barH);
+  }
+}
+
+// Resize handler
+window.addEventListener('resize', () => { if (timeline.length) drawTimeline(); });
+
+// --- Console ---
+const logEl = document.getElementById('console-log');
+const cmdInput = document.getElementById('cmd-input');
+
+function logMsg(text, cls) {
+  logEntries.push({ text, cls });
+  if (logEntries.length > MAX_LOG) logEntries.shift();
+  const div = document.createElement('div');
+  div.className = cls || '';
+  div.textContent = text;
+  logEl.appendChild(div);
+  while (logEl.children.length > MAX_LOG) logEl.firstChild.remove();
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+async function sendCommand(endpoint, text) {
+  const display = text ? `${endpoint} "${text}"` : endpoint;
+  logMsg(`> ${display}`, 'log-cmd');
+  try {
+    const url = `http://localhost:8081/${endpoint}`;
+    const opts = { method: 'POST', headers: { 'Content-Type': 'application/json' } };
+    if (text !== undefined && text !== null) opts.body = JSON.stringify({ text: String(text) });
+    const res = await fetch(url, opts);
+    const data = await res.json();
+    logMsg(`[OK] ${JSON.stringify(data)}`, 'log-ok');
+    return data;
+  } catch (e) {
+    logMsg(`[ERR] ${e.message}`, 'log-err');
+    return null;
+  }
+}
+
+function parseAndRun(input) {
+  const raw = input.trim();
+  if (!raw) return;
+
+  if (raw === 'help') {
+    logMsg('Commands: feed <text>, query <text>, reset, sleep <n>, status, help', 'log-info');
+    return;
+  }
+  if (raw === 'reset') { sendCommand('reset'); return; }
+  if (raw === 'status') { sendCommand('status'); return; }
+
+  const sleepMatch = raw.match(/^sleep\s+(\d+\.?\d*)$/);
+  if (sleepMatch) { sendCommand('idle', sleepMatch[1]); return; }
+
+  const feedMatch = raw.match(/^feed\s+["']?(.+?)["']?$/);
+  if (feedMatch) { sendCommand('feed', feedMatch[1]); return; }
+
+  const queryMatch = raw.match(/^query\s+["']?(.+?)["']?$/);
+  if (queryMatch) { sendCommand('query', queryMatch[1]); return; }
+
+  // Try as generic command
+  const parts = raw.split(/\s+/);
+  const cmd = parts[0];
+  const arg = parts.slice(1).join(' ').replace(/^["']|["']$/g, '');
+  sendCommand(cmd, arg || undefined);
+}
+
+cmdInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    parseAndRun(cmdInput.value);
+    cmdInput.value = '';
+  }
+});
+
+// --- Demo ---
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+document.getElementById('btn-demo').addEventListener('click', async function() {
+  this.disabled = true; this.textContent = 'Running...';
+  try {
+    await sendCommand('feed', 'il gatto nero dorme sul divano');
+    await sleep(3000);
+    await sendCommand('feed', 'e molto stanco dopo aver giocato');
+    await sleep(3000);
+    await sendCommand('feed', 'il bambino lo sveglia');
+    await sleep(3000);
+    await sendCommand('query', 'chi dorme?');
+    await sleep(3000);
+    await sendCommand('feed', 'la mamma prepara la cena in cucina');
+    await sleep(3000);
+    await sendCommand('feed', 'il papa apparecchia la tavola');
+    await sleep(3000);
+    await sendCommand('query', 'cosa succede?');
+    await sleep(5000);
+    await sendCommand('idle', '20');
+  } finally {
+    this.disabled = false; this.textContent = 'Demo';
+  }
+});
+
+// --- Init ---
+connectWS();
+logMsg('NOESIS Proto 1 Dashboard ready. Type "help" for commands.', 'log-info');
+
+// Initial empty render
+renderBars('concepts-bars', []);
+renderBars('metrics-bars', [
+  { label: 'Coerenza', value: 0, color: '#888' },
+  { label: 'Novita', value: 0, color: '#888' },
+  { label: 'Velocita', value: 0, color: '#888' },
+]);
+renderBars('scales-bars', [
+  { label: 'Fast', value: 0, color: '#4fc3f7' },
+  { label: 'Medium', value: 0, color: '#5c6bc0' },
+  { label: 'Slow', value: 0, color: '#ab47bc' },
+]);
+drawTimeline();
+</script>
+</body>
+</html>
