@@ -183,8 +183,25 @@ impl MultiScaleField {
     pub fn combined_state(&self) -> &RealHV { &self.combined_state }
 
     /// Set the slow field's state directly (used for ring coupling).
+    /// Also recombines the combined_state to reflect the change.
     pub fn set_slow_state(&mut self, state: RealHV) {
         self.slow.set_state(state);
+        self.recombine();
+    }
+
+    /// Recalculate combined_state from the three scale fields.
+    fn recombine(&mut self) {
+        let w_fast = self.config.fast_weight;
+        let w_medium = self.config.medium_weight;
+        let w_slow = self.config.slow_weight;
+        let fast_contrib = self.fast.state().scale(w_fast);
+        let medium_contrib = self.medium.state().scale(w_medium);
+        let slow_contrib = self.slow.state().scale(w_slow);
+        let fast_medium = RealHV::add(&fast_contrib, &medium_contrib);
+        self.combined_state = RealHV::add(&fast_medium, &slow_contrib);
+        if self.combined_state.norm() > 1e-8 {
+            self.combined_state.normalize();
+        }
     }
 
     /// Reset all three fields.

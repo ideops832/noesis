@@ -31,11 +31,14 @@ impl Ring {
             if incoming.norm() < 1e-8 { continue; }
 
             let old_slow = self.nodes[next].field.slow_state().clone();
+            let incoming_norm = incoming.normalized();
             if old_slow.norm() < 1e-8 {
-                self.nodes[next].field.set_slow_state(incoming.normalized());
+                // Empty slow field: seed with a fraction of the incoming signal
+                self.nodes[next].field.set_slow_state(incoming_norm.scale(self.coupling_lr * 5.0));
             } else {
+                // Gradual bundling: mix incoming into existing slow field
                 let kept = old_slow.scale(1.0 - self.coupling_lr);
-                let added = incoming.normalized().scale(self.coupling_lr);
+                let added = incoming_norm.scale(self.coupling_lr);
                 let mut new_slow = RealHV::add(&kept, &added);
                 new_slow.normalize();
                 self.nodes[next].field.set_slow_state(new_slow);

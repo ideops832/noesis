@@ -138,7 +138,12 @@ function connectWS() {
   ws.onclose = () => { setConnected(false); setTimeout(connectWS, 3000); };
   ws.onerror = () => { ws.close(); };
   ws.onmessage = (e) => {
-    try { state = JSON.parse(e.data); onFrame(); } catch(err) {}
+    try {
+      const data = JSON.parse(e.data);
+      // Server sends {"proto1": ..., "ring": ...} — extract proto1 portion
+      state = data.proto1 || data;
+      onFrame();
+    } catch(err) {}
   };
 }
 

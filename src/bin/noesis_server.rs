@@ -28,8 +28,8 @@ fn main() {
     // 2. Create Ring (4 nodes) AND a single field for Proto 1 backward compat
     let ms_config = MultiScaleConfig::default_for_dim(1024);
     let mut field = MultiScaleField::new(ms_config.clone(), 42);
-    let mut ring = Ring::new(ms_config, 4, 0.01, 42);
-    println!("  Ring: {} nodes, coupling_lr=0.01", ring.nodes.len());
+    let mut ring = Ring::new(ms_config, 4, 0.05, 42);
+    println!("  Ring: {} nodes, coupling_lr=0.05", ring.nodes.len());
     println!("  MultiScaleField (Proto 1): 3 scales (fast, medium, slow)");
 
     // 3. Start servers
