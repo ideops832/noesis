@@ -180,6 +180,65 @@ pub fn build_frame(
     }
 }
 
+#[derive(Serialize, Clone)]
+pub struct RingFrame {
+    pub timestamp_ms: u64,
+    pub nodes: Vec<DashboardFrame>,
+    pub connections: Vec<ConnectionInfo>,
+    pub ring_coherence: f32,
+    pub tick: u64,
+}
+
+#[derive(Serialize, Clone)]
+pub struct ConnectionInfo {
+    pub from_node: usize,
+    pub to_node: usize,
+    pub flow_similarity: f32,
+}
+
+/// Build a ring frame from per-node dashboard frames and ring state.
+pub fn build_ring_frame(
+    node_frames: Vec<DashboardFrame>,
+    node_combined_states: &[&RealHV],
+    tick: u64,
+) -> RingFrame {
+    let timestamp_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+
+    let n = node_combined_states.len();
+    let mut connections = Vec::new();
+    let mut total_sim = 0.0f32;
+    let mut count = 0;
+
+    for i in 0..n {
+        let next = (i + 1) % n;
+        let sim = if node_combined_states[i].norm() > 1e-8 && node_combined_states[next].norm() > 1e-8 {
+            RealHV::cosine_similarity(node_combined_states[i], node_combined_states[next])
+        } else {
+            0.0
+        };
+        connections.push(ConnectionInfo {
+            from_node: i,
+            to_node: next,
+            flow_similarity: sim,
+        });
+        total_sim += sim;
+        count += 1;
+    }
+
+    let ring_coherence = if count > 0 { total_sim / count as f32 } else { 0.0 };
+
+    RingFrame {
+        timestamp_ms,
+        nodes: node_frames,
+        connections,
+        ring_coherence,
+        tick,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

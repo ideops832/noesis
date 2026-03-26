@@ -182,6 +182,11 @@ impl MultiScaleField {
     pub fn slow_state(&self) -> &RealHV { self.slow.state() }
     pub fn combined_state(&self) -> &RealHV { &self.combined_state }
 
+    /// Set the slow field's state directly (used for ring coupling).
+    pub fn set_slow_state(&mut self, state: RealHV) {
+        self.slow.set_state(state);
+    }
+
     /// Reset all three fields.
     pub fn reset(&mut self) {
         self.fast.reset();

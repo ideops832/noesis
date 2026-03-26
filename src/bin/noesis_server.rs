@@ -9,15 +9,15 @@ use noesis::hdc::real::RealHV;
 use noesis::hdc::hypervector::HyperVector;
 use noesis::utils::corpus;
 use noesis::server::{state, websocket, api};
+use noesis::topology::ring::Ring;
 
 fn main() {
-    println!("NOESIS Proto 1 — Initializing...");
+    println!("NOESIS Proto 2 — Initializing...");
 
     // 1. Build trained vocabulary
     let tokenizer = Tokenizer::new();
     let mut all = corpus::expanded_corpus();
     all.extend(corpus::synonym_parallel_corpus());
-    // Don't include relational_corpus to keep init fast
     let sentences: Vec<Vec<String>> = all.iter().map(|s| tokenizer.tokenize(s)).collect();
 
     let mut composer = Composer::new(1024, 42);
@@ -25,10 +25,12 @@ fn main() {
     for _ in 0..3 { composer.vocabulary.learn_from_context_momentum(&sentences, 3, 0.7); }
     println!("  Vocabulary: {} words", composer.vocabulary.len());
 
-    // 2. Create MultiScaleField
+    // 2. Create Ring (4 nodes) AND a single field for Proto 1 backward compat
     let ms_config = MultiScaleConfig::default_for_dim(1024);
-    let mut field = MultiScaleField::new(ms_config, 42);
-    println!("  MultiScaleField: 3 scales (fast, medium, slow)");
+    let mut field = MultiScaleField::new(ms_config.clone(), 42);
+    let mut ring = Ring::new(ms_config, 4, 0.01, 42);
+    println!("  Ring: {} nodes, coupling_lr=0.01", ring.nodes.len());
+    println!("  MultiScaleField (Proto 1): 3 scales (fast, medium, slow)");
 
     // 3. Start servers
     let (_ws_handle, ws_clients) = websocket::start_ws_server(8080);
@@ -36,10 +38,11 @@ fn main() {
     let _api_handle = std::thread::spawn(move || api::start_api_server(8081, cmd_tx));
     println!("  WebSocket: ws://localhost:8080");
     println!("  REST API:  http://localhost:8081");
-    println!("  Dashboard: http://localhost:8081/");
-    println!("\nNOESIS Proto 1 ready.\n");
+    println!("  Dashboard (Proto 1): http://localhost:8081/");
+    println!("  Dashboard (Proto 2): http://localhost:8081/ring");
+    println!("\nNOESIS Proto 2 ready.\n");
 
-    // 4. Main loop
+    // 4. Main loop — Proto 1 state
     let mut narrative: Vec<state::NarrativePoint> = Vec::new();
     let mut last_event: Option<state::Event> = None;
     let mut total_steps: u64 = 0;
@@ -54,6 +57,7 @@ fn main() {
         // Process commands from REST API (non-blocking)
         while let Ok(cmd) = cmd_rx.try_recv() {
             match cmd {
+                // --- Proto 1 commands (backward compatible) ---
                 api::ApiCommand::Feed { text, response_tx } => {
                     let hv = composer.encode_sentence(&text);
                     if let Some(hv) = hv {
@@ -78,8 +82,7 @@ fn main() {
                     }
                 }
                 api::ApiCommand::Query { text, response_tx } => {
-                    // Query doesn't change state
-                    let salient = get_salient(&field, &composer.vocabulary, 5);
+                    let salient = get_salient_field(&field, &composer.vocabulary, 5);
                     let results: Vec<String> = salient
                         .iter()
                         .map(|(w, s)| {
@@ -98,6 +101,7 @@ fn main() {
                 }
                 api::ApiCommand::Reset { response_tx } => {
                     field.reset();
+                    ring.reset_all();
                     total_steps = 0;
                     turn_count = 0;
                     narrative.clear();
@@ -112,7 +116,9 @@ fn main() {
                 api::ApiCommand::Status { response_tx } => {
                     let uptime = start_time.elapsed().as_secs();
                     let _ = response_tx.send(format!(
-                        r#"{{"engine":"noesis","version":"0.1.0","dim":1024,"neurons":20,"scales":3,"vocab_size":{},"total_steps":{},"uptime_seconds":{}}}"#,
+                        r#"{{"engine":"noesis","version":"0.2.0","dim":1024,"neurons":20,"scales":3,"ring_nodes":{},"ring_tick":{},"vocab_size":{},"total_steps":{},"uptime_seconds":{}}}"#,
+                        ring.nodes.len(),
+                        ring.tick,
                         composer.vocabulary.len(),
                         total_steps,
                         uptime
@@ -133,11 +139,76 @@ fn main() {
                         steps
                     ));
                 }
+
+                // --- Proto 2 ring commands ---
+                api::ApiCommand::FeedNode { node_id, text, response_tx } => {
+                    if node_id >= ring.nodes.len() {
+                        let _ = response_tx.send(format!(
+                            r#"{{"status":"error","message":"node_id {} out of range (max {})"}}""#,
+                            node_id, ring.nodes.len() - 1
+                        ));
+                        continue;
+                    }
+                    let hv = composer.encode_sentence(&text);
+                    if let Some(hv) = hv {
+                        ring.feed_node(node_id, &hv);
+                        ring.nodes[node_id].last_event = Some(state::Event {
+                            event_type: "feed".into(),
+                            text: text.clone(),
+                            result: None,
+                        });
+                        let tokens: Vec<String> = tokenizer.tokenize(&text);
+                        let _ = response_tx.send(format!(
+                            r#"{{"status":"ok","node":{},"tokens":{:?},"turn":{}}}"#,
+                            node_id, tokens, ring.nodes[node_id].turn_count
+                        ));
+                    } else {
+                        let _ = response_tx.send(
+                            r#"{"status":"error","message":"empty encoding"}"#.into(),
+                        );
+                    }
+                }
+                api::ApiCommand::QueryNode { node_id, text: _, response_tx } => {
+                    if node_id >= ring.nodes.len() {
+                        let _ = response_tx.send(format!(
+                            r#"{{"status":"error","message":"node_id {} out of range (max {})"}}""#,
+                            node_id, ring.nodes.len() - 1
+                        ));
+                        continue;
+                    }
+                    let salient = get_salient_field(&ring.nodes[node_id].field, &composer.vocabulary, 5);
+                    let results: Vec<String> = salient
+                        .iter()
+                        .map(|(w, s)| {
+                            format!(r#"{{"concept":"{}","similarity":{:.4}}}"#, w, s)
+                        })
+                        .collect();
+                    let _ = response_tx.send(format!(
+                        r#"{{"status":"ok","node":{},"results":[{}]}}"#,
+                        node_id, results.join(",")
+                    ));
+                }
+                api::ApiCommand::RingStep { response_tx } => {
+                    ring.step_ring();
+                    let _ = response_tx.send(format!(
+                        r#"{{"status":"ok","tick":{}}}"#,
+                        ring.tick
+                    ));
+                }
+                api::ApiCommand::IdleAll { steps, response_tx } => {
+                    for _ in 0..steps {
+                        ring.idle_all();
+                    }
+                    let _ = response_tx.send(format!(
+                        r#"{{"status":"ok","idle_steps":{},"nodes":{}}}"#,
+                        steps, ring.nodes.len()
+                    ));
+                }
             }
         }
 
-        // Build frame
-        let salient = get_salient(&field, &composer.vocabulary, 10);
+        // --- Proto 1: Build frame for single field ---
+        let salient = get_salient_field(&field, &composer.vocabulary, 10);
         let velocity = if let Some(prev) = &prev_state {
             let curr = field.combined_state();
             if prev.norm() > 1e-8 && curr.norm() > 1e-8 {
@@ -149,7 +220,7 @@ fn main() {
             0.0
         };
 
-        let novelty = velocity; // simplified: velocity IS novelty
+        let novelty = velocity;
         let idle_time = last_input_time.elapsed().as_secs_f32();
 
         let frame = state::build_frame(
@@ -186,13 +257,54 @@ fn main() {
             }
         }
 
-        // Broadcast via WebSocket
-        let json = serde_json::to_string(&frame).unwrap_or_default();
-        websocket::broadcast(&ws_clients, &json);
+        // --- Proto 2: Ring step + build ring frame ---
+        ring.step_ring();
 
-        // Save previous state
+        // Update prev states for velocity tracking
+        for node in &mut ring.nodes {
+            node.update_prev_state();
+        }
+
+        let node_frames: Vec<state::DashboardFrame> = ring.nodes.iter().map(|node| {
+            let node_salient = get_salient_field(&node.field, &composer.vocabulary, 10);
+            let node_velocity = node.velocity();
+            state::build_frame(
+                &node_salient,
+                &composer.vocabulary,
+                node.field.fast_state().norm(),
+                node.field.medium_state().norm(),
+                node.field.slow_state().norm(),
+                node_velocity,
+                node_velocity,
+                node.total_steps,
+                node.turn_count,
+                0.0,
+                &node.narrative,
+                node.last_event.clone(),
+            )
+        }).collect();
+
+        let combined_states: Vec<&RealHV> = ring.nodes.iter()
+            .map(|n| n.field.combined_state())
+            .collect();
+        let ring_frame = state::build_ring_frame(node_frames, &combined_states, ring.tick);
+
+        // Broadcast both frames via WebSocket (Proto 1 frame + ring frame wrapped)
+        let proto1_json = serde_json::to_string(&frame).unwrap_or_default();
+        let ring_json = serde_json::to_string(&ring_frame).unwrap_or_default();
+        let combined_json = format!(
+            r#"{{"proto1":{},"ring":{}}}"#,
+            proto1_json, ring_json
+        );
+        websocket::broadcast(&ws_clients, &combined_json);
+
+        // Save previous state (Proto 1)
         prev_state = Some(field.combined_state().clone());
         last_event = None;
+        // Clear ring node events
+        for node in &mut ring.nodes {
+            node.last_event = None;
+        }
 
         // Sleep to maintain ~10fps
         let elapsed = loop_start.elapsed();
@@ -202,7 +314,7 @@ fn main() {
     }
 }
 
-fn get_salient(
+fn get_salient_field(
     field: &MultiScaleField,
     vocab: &Vocabulary,
     k: usize,

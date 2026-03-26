@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOESIS Proto 2 — Ring</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#1a1a2e; color:#e0e0e0; font-family:system-ui,-apple-system,sans-serif; overflow:hidden; height:100vh; }
+#app { display:flex; flex-direction:column; height:100vh; max-width:1400px; margin:0 auto; padding:8px; gap:4px; }
+
+/* Header */
+#header { display:flex; justify-content:space-between; align-items:center; padding:10px 16px; border:1px solid #333; border-radius:6px; background:#16162a; }
+#header h1 { font-size:18px; font-weight:700; letter-spacing:1px; }
+#conn { display:flex; align-items:center; gap:8px; font-size:13px; }
+#conn-dot { width:10px; height:10px; border-radius:50%; background:#f44; transition:background .3s; }
+#conn-dot.on { background:#4caf50; }
+
+/* Main area */
+#main { display:flex; gap:4px; flex:1; min-height:0; }
+
+/* Left panel — ring canvas */
+#left { width:420px; min-width:420px; border:1px solid #333; border-radius:6px; background:#16162a; padding:10px; display:flex; align-items:center; justify-content:center; }
+#ring-canvas { cursor:pointer; }
+
+/* Right panel — node details */
+#right { flex:1; border:1px solid #333; border-radius:6px; background:#16162a; padding:16px; overflow-y:auto; display:flex; flex-direction:column; gap:14px; }
+.section-title { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:#888; margin-bottom:8px; }
+.bar-row { display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:13px; }
+.bar-label { width:75px; text-align:right; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.bar-track { flex:1; height:18px; background:#222; border-radius:3px; overflow:hidden; position:relative; }
+.bar-fill { height:100%; border-radius:3px; transition:width .3s ease, background .3s ease; min-width:0; }
+.bar-val { width:40px; text-align:right; font-size:12px; font-variant-numeric:tabular-nums; }
+#node-header { font-size:15px; font-weight:600; }
+#node-dominant { font-size:13px; color:#ccc; margin-top:2px; }
+#ring-info { font-size:12px; color:#999; margin-top:4px; padding:6px 8px; background:#1a1a2e; border:1px solid #333; border-radius:4px; }
+
+/* Timeline */
+#timeline-wrap { border:1px solid #333; border-radius:6px; background:#16162a; padding:6px 6px 6px 30px; height:100px; min-height:80px; position:relative; }
+#timeline-labels { position:absolute; left:6px; top:6px; bottom:6px; width:22px; display:flex; flex-direction:column; justify-content:space-around; }
+.tl-label { font-size:10px; color:#888; font-weight:700; }
+#timeline-canvas { width:100%; height:100%; display:block; }
+
+/* Console */
+#console { border:1px solid #333; border-radius:6px; background:#16162a; display:flex; flex-direction:column; height:150px; min-height:120px; }
+#console-header { display:flex; justify-content:space-between; align-items:center; padding:6px 12px; border-bottom:1px solid #333; }
+#console-header span { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:#888; }
+#btn-demo { background:#2a2a4a; border:1px solid #555; color:#e0e0e0; padding:3px 12px; border-radius:4px; cursor:pointer; font-size:12px; }
+#btn-demo:hover { background:#3a3a5a; }
+#console-log { flex:1; overflow-y:auto; padding:6px 12px; font-family:'Courier New',monospace; font-size:12px; line-height:1.6; }
+.log-cmd { color:#4fc3f7; }
+.log-ok { color:#66bb6a; }
+.log-err { color:#ef5350; }
+.log-info { color:#aaa; }
+#console-input-wrap { display:flex; align-items:center; padding:4px 12px; border-top:1px solid #333; }
+#console-input-wrap::before { content:'> '; font-family:'Courier New',monospace; color:#4fc3f7; font-size:13px; }
+#cmd-input { flex:1; background:transparent; border:none; outline:none; color:#e0e0e0; font-family:'Courier New',monospace; font-size:13px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="header">
+    <h1>NOESIS Proto 2 — Ring Topology</h1>
+    <div id="conn"><span id="conn-text">Disconnected</span><div id="conn-dot"></div></div>
+  </div>
+  <div id="main">
+    <div id="left">
+      <canvas id="ring-canvas" width="400" height="400"></canvas>
+    </div>
+    <div id="right">
+      <div>
+        <div id="node-header">Node 0 Details</div>
+        <div id="node-dominant">---</div>
+      </div>
+      <div>
+        <div class="section-title">Top Concetti</div>
+        <div id="concepts-bars"></div>
+      </div>
+      <div>
+        <div class="section-title">Metriche</div>
+        <div id="metrics-bars"></div>
+      </div>
+      <div>
+        <div class="section-title">Scale Temporali</div>
+        <div id="scales-bars"></div>
+      </div>
+      <div id="ring-info">Ring: tick --, coherence --</div>
+    </div>
+  </div>
+  <div id="timeline-wrap">
+    <div id="timeline-labels">
+      <div class="tl-label">N0</div>
+      <div class="tl-label">N1</div>
+      <div class="tl-label">N2</div>
+      <div class="tl-label">N3</div>
+    </div>
+    <canvas id="timeline-canvas"></canvas>
+  </div>
+  <div id="console">
+    <div id="console-header"><span>Console</span><button id="btn-demo">Demo</button></div>
+    <div id="console-log"></div>
+    <div id="console-input-wrap"><input id="cmd-input" type="text" placeholder='feed 0 "il gatto dorme"' autocomplete="off"></div>
+  </div>
+</div>
+
+<script>
+// --- Color definitions ---
+const COLORS = {
+  animali:  {h:15,  s:80, l:55},
+  cibo:     {h:140, s:70, l:45},
+  lavoro:   {h:220, s:75, l:55},
+  natura:   {h:180, s:65, l:45},
+  famiglia: {h:45,  s:85, l:55},
+  altro:    {h:260, s:40, l:50},
+  nessuno:  {h:0,   s:0,  l:40},
+};
+
+function catColor(cat, alpha) {
+  const c = COLORS[cat] || COLORS.nessuno;
+  return alpha !== undefined ? `hsla(${c.h},${c.s}%,${c.l}%,${alpha})` : `hsl(${c.h},${c.s}%,${c.l}%)`;
+}
+function catHSL(cat) { return COLORS[cat] || COLORS.nessuno; }
+
+// --- Node positions (square ring) ---
+const NODE_POS = [
+  {x:200, y:60},   // 0: top
+  {x:340, y:200},  // 1: right
+  {x:200, y:340},  // 2: bottom
+  {x:60,  y:200},  // 3: left
+];
+const NODE_R = 45;
+
+// --- State ---
+let ws = null;
+let frame = null;  // latest RingFrame
+let selectedNode = 0;
+const MAX_TIMELINE = 300;
+// timeline[nodeIdx] = [{category, coherence}, ...]
+const timelines = [[], [], [], []];
+const MAX_LOG = 50;
+
+// Glow animation phase
+let glowPhase = 0;
+
+// --- WebSocket ---
+function connectWS() {
+  if (ws && ws.readyState <= 1) return;
+  ws = new WebSocket('ws://localhost:8080');
+  ws.onopen = () => setConnected(true);
+  ws.onclose = () => { setConnected(false); setTimeout(connectWS, 3000); };
+  ws.onerror = () => ws.close();
+  ws.onmessage = (e) => {
+    try { frame = JSON.parse(e.data); onFrame(); } catch(err) {}
+  };
+}
+
+function setConnected(on) {
+  document.getElementById('conn-dot').classList.toggle('on', on);
+  document.getElementById('conn-text').textContent = on ? 'Connected' : 'Disconnected';
+}
+
+// --- On new frame ---
+function onFrame() {
+  if (!frame) return;
+  // Update timelines
+  for (let i = 0; i < 4; i++) {
+    const node = frame.nodes && frame.nodes[i];
+    if (node) {
+      const fs = node.field_state || {};
+      const m = node.metrics || {};
+      timelines[i].push({ category: fs.category || 'nessuno', coherence: m.coherence || 0 });
+    } else {
+      timelines[i].push({ category: 'nessuno', coherence: 0 });
+    }
+    if (timelines[i].length > MAX_TIMELINE) timelines[i].shift();
+  }
+  updateDetails();
+  drawTimeline();
+}
+
+// --- Update right panel for selected node ---
+function updateDetails() {
+  if (!frame) return;
+  const node = frame.nodes && frame.nodes[selectedNode];
+  const fs = node ? (node.field_state || {}) : {};
+  const sc = node ? (node.salient_concepts || []) : [];
+  const m = node ? (node.metrics || {}) : {};
+
+  document.getElementById('node-header').textContent = `Node ${selectedNode} Details`;
+  const dom = fs.dominant_concept || '---';
+  const sim = (fs.dominant_similarity || 0).toFixed(2);
+  const cat = fs.category || 'nessuno';
+  document.getElementById('node-dominant').textContent = `Dominant: ${dom} (${sim}) ${cat}`;
+
+  // Top concepts
+  renderBars('concepts-bars', sc.slice(0, 5).map(c => ({
+    label: c.word, value: c.similarity, color: catColor(c.category || 'altro')
+  })));
+
+  // Metrics
+  renderBars('metrics-bars', [
+    { label: 'Coerenza', value: m.coherence || 0, color: metricColor(m.coherence || 0) },
+    { label: 'Novita', value: m.novelty || 0, color: metricGradient(m.novelty || 0, '#888', '#ff9800') },
+    { label: 'Velocita', value: fs.velocity || 0, color: metricGradient(fs.velocity || 0, '#888', '#f44336') },
+  ]);
+
+  // Scales
+  renderBars('scales-bars', [
+    { label: 'Fast', value: fs.fast_activation || 0, color: '#4fc3f7' },
+    { label: 'Medium', value: fs.medium_activation || 0, color: '#5c6bc0' },
+    { label: 'Slow', value: fs.slow_activation || 0, color: '#ab47bc' },
+  ]);
+
+  // Ring info
+  document.getElementById('ring-info').textContent =
+    `Ring: tick ${frame.tick ?? '--'}, coherence ${(frame.ring_coherence ?? 0).toFixed(3)}`;
+}
+
+function metricColor(v) {
+  if (v > 0.7) return '#66bb6a';
+  if (v > 0.4) return '#fdd835';
+  return '#ef5350';
+}
+function metricGradient(v, from, to) {
+  return v > 0.5 ? to : v > 0.2 ? to + 'aa' : from;
+}
+
+function renderBars(id, items) {
+  const container = document.getElementById(id);
+  while (container.children.length > items.length) container.lastChild.remove();
+  while (container.children.length < items.length) {
+    const row = document.createElement('div'); row.className = 'bar-row';
+    row.innerHTML = '<div class="bar-label"></div><div class="bar-track"><div class="bar-fill"></div></div><div class="bar-val"></div>';
+    container.appendChild(row);
+  }
+  items.forEach((item, i) => {
+    const row = container.children[i];
+    row.querySelector('.bar-label').textContent = item.label;
+    const fill = row.querySelector('.bar-fill');
+    fill.style.width = (Math.max(0, Math.min(1, item.value)) * 100) + '%';
+    fill.style.background = item.color;
+    row.querySelector('.bar-val').textContent = item.value.toFixed(2);
+  });
+}
+
+// --- Ring canvas ---
+const rCanvas = document.getElementById('ring-canvas');
+const rCtx = rCanvas.getContext('2d');
+
+function drawRing() {
+  const ctx = rCtx;
+  const W = 400, H = 400;
+  ctx.clearRect(0, 0, W, H);
+  glowPhase += 0.03;
+
+  const connections = frame ? (frame.connections || []) : [];
+  const nodes = frame ? (frame.nodes || []) : [];
+
+  // Draw arrows (connections) behind nodes
+  // Ring order: 0->1, 1->2, 2->3, 3->0
+  const connMap = {};
+  connections.forEach(c => { connMap[c.from_node + '-' + c.to_node] = c.flow_similarity; });
+
+  const edges = [[0,1],[1,2],[2,3],[3,0]];
+  edges.forEach(([from, to]) => {
+    const flow = connMap[from + '-' + to] || 0;
+    const pFrom = NODE_POS[from];
+    const pTo = NODE_POS[to];
+
+    // Control point: offset toward center for a curved arrow
+    const cx = (pFrom.x + pTo.x) / 2;
+    const cy = (pFrom.y + pTo.y) / 2;
+    const midX = W / 2, midY = H / 2;
+    // Push control point toward center by 30px
+    const dx = midX - cx, dy = midY - cy;
+    const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+    const cpx = cx + dx / dist * 35;
+    const cpy = cy + dy / dist * 35;
+
+    // Compute end point pulled back from node edge
+    const angle = Math.atan2(pTo.y - cpy, pTo.x - cpx);
+    const ex = pTo.x - Math.cos(angle) * (NODE_R + 6);
+    const ey = pTo.y - Math.sin(angle) * (NODE_R + 6);
+
+    // Start point pushed out from node edge
+    const angleS = Math.atan2(cpy - pFrom.y, cpx - pFrom.x);
+    const sx = pFrom.x + Math.cos(angleS) * (NODE_R + 6);
+    const sy = pFrom.y + Math.sin(angleS) * (NODE_R + 6);
+
+    // Glow effect when flow > 0.1
+    const baseAlpha = Math.max(0.08, Math.min(1, flow));
+    let alpha = baseAlpha;
+    if (flow > 0.1) {
+      alpha = baseAlpha + 0.15 * Math.sin(glowPhase * 2 + from);
+      alpha = Math.max(0.08, Math.min(1, alpha));
+      // Glow shadow
+      ctx.save();
+      ctx.shadowColor = `rgba(255,255,255,${alpha * 0.5})`;
+      ctx.shadowBlur = 8 + flow * 12;
+    }
+
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.quadraticCurveTo(cpx, cpy, ex, ey);
+    ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
+    ctx.lineWidth = 1.5 + flow * 3;
+    ctx.stroke();
+
+    if (flow > 0.1) ctx.restore();
+
+    // Arrowhead
+    const headLen = 8 + flow * 4;
+    const a1 = angle + Math.PI * 0.8;
+    const a2 = angle - Math.PI * 0.8;
+    ctx.beginPath();
+    ctx.moveTo(ex, ey);
+    ctx.lineTo(ex + Math.cos(a1) * headLen, ey + Math.sin(a1) * headLen);
+    ctx.moveTo(ex, ey);
+    ctx.lineTo(ex + Math.cos(a2) * headLen, ey + Math.sin(a2) * headLen);
+    ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Flow label at midpoint of curve
+    if (flow > 0.01) {
+      // Point on quadratic bezier at t=0.5
+      const t = 0.5;
+      const bx = (1-t)*(1-t)*sx + 2*(1-t)*t*cpx + t*t*ex;
+      const by = (1-t)*(1-t)*sy + 2*(1-t)*t*cpy + t*t*ey;
+      ctx.font = '10px system-ui, sans-serif';
+      ctx.fillStyle = `rgba(255,255,255,${Math.max(0.4, alpha)})`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(flow.toFixed(2), bx, by);
+    }
+  });
+
+  // Draw nodes
+  for (let i = 0; i < 4; i++) {
+    const p = NODE_POS[i];
+    const node = nodes[i];
+    const fs = node ? (node.field_state || {}) : {};
+    const cat = fs.category || 'nessuno';
+    const act = fs.activation || 0;
+    const dom = fs.dominant_concept || '---';
+    const hsl = catHSL(cat);
+
+    // Circle fill with activation-based opacity
+    const fillAlpha = 0.25 + act * 0.65;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, NODE_R, 0, Math.PI * 2);
+    ctx.fillStyle = `hsla(${hsl.h},${hsl.s}%,${hsl.l}%,${fillAlpha})`;
+    ctx.fill();
+
+    // Border — highlight if selected
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, NODE_R, 0, Math.PI * 2);
+    if (i === selectedNode) {
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 3;
+      ctx.shadowColor = '#fff';
+      ctx.shadowBlur = 8;
+    } else {
+      ctx.strokeStyle = `hsl(${hsl.h},${hsl.s}%,${hsl.l}%)`;
+      ctx.lineWidth = 2;
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
+    }
+    ctx.stroke();
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+
+    // Node ID (small, top area)
+    ctx.font = 'bold 11px system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`N${i}`, p.x, p.y - 14);
+
+    // Dominant concept (larger, center)
+    ctx.font = 'bold 15px system-ui, sans-serif';
+    ctx.fillStyle = '#fff';
+    // Truncate long words
+    let label = dom.length > 8 ? dom.slice(0, 7) + '..' : dom;
+    ctx.fillText(label, p.x, p.y + 5);
+
+    // Small activation bar below concept
+    const barW = NODE_R * 1.4;
+    const barH = 4;
+    const barX = p.x - barW / 2;
+    const barY = p.y + 22;
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.fillRect(barX, barY, barW, barH);
+    ctx.fillStyle = `hsl(${hsl.h},${hsl.s}%,${hsl.l}%)`;
+    ctx.fillRect(barX, barY, barW * Math.min(1, act), barH);
+  }
+
+  requestAnimationFrame(drawRing);
+}
+requestAnimationFrame(drawRing);
+
+// Click detection on ring canvas
+rCanvas.addEventListener('click', (e) => {
+  const rect = rCanvas.getBoundingClientRect();
+  const scaleX = 400 / rect.width;
+  const scaleY = 400 / rect.height;
+  const mx = (e.clientX - rect.left) * scaleX;
+  const my = (e.clientY - rect.top) * scaleY;
+
+  for (let i = 0; i < 4; i++) {
+    const p = NODE_POS[i];
+    const dx = mx - p.x, dy = my - p.y;
+    if (dx*dx + dy*dy <= NODE_R * NODE_R) {
+      selectedNode = i;
+      updateDetails();
+      break;
+    }
+  }
+});
+
+// --- Timeline canvas (4 rows) ---
+const tCanvas = document.getElementById('timeline-canvas');
+const tCtx = tCanvas.getContext('2d');
+
+function drawTimeline() {
+  const w = tCanvas.parentElement.clientWidth - 36; // account for label area
+  const h = tCanvas.parentElement.clientHeight - 12;
+  tCanvas.width = w; tCanvas.height = h;
+  tCtx.clearRect(0, 0, w, h);
+
+  const rowH = h / 4;
+  const colW = Math.max(1, w / MAX_TIMELINE);
+
+  for (let n = 0; n < 4; n++) {
+    const tl = timelines[n];
+    const yBase = n * rowH;
+    const startX = w - tl.length * colW;
+
+    // Subtle row separator
+    if (n > 0) {
+      tCtx.strokeStyle = 'rgba(255,255,255,0.06)';
+      tCtx.lineWidth = 1;
+      tCtx.beginPath();
+      tCtx.moveTo(0, yBase);
+      tCtx.lineTo(w, yBase);
+      tCtx.stroke();
+    }
+
+    for (let i = 0; i < tl.length; i++) {
+      const d = tl[i];
+      const barH = Math.max(2, d.coherence * (rowH - 2));
+      tCtx.fillStyle = catColor(d.category, 0.8);
+      tCtx.fillRect(startX + i * colW, yBase + rowH - barH - 1, Math.ceil(colW), barH);
+    }
+  }
+}
+
+window.addEventListener('resize', () => drawTimeline());
+
+// --- Console ---
+const logEl = document.getElementById('console-log');
+const cmdInput = document.getElementById('cmd-input');
+
+function logMsg(text, cls) {
+  const div = document.createElement('div');
+  div.className = cls || '';
+  div.textContent = text;
+  logEl.appendChild(div);
+  while (logEl.children.length > MAX_LOG) logEl.firstChild.remove();
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+async function sendCommand(endpoint, body) {
+  try {
+    const url = `http://localhost:8081/${endpoint}`;
+    const opts = { method: 'POST', headers: { 'Content-Type': 'application/json' } };
+    if (body !== undefined) opts.body = JSON.stringify(body);
+    const res = await fetch(url, opts);
+    const data = await res.json();
+    logMsg(`[OK] ${JSON.stringify(data)}`, 'log-ok');
+    return data;
+  } catch (e) {
+    logMsg(`[ERR] ${e.message}`, 'log-err');
+    return null;
+  }
+}
+
+async function cmd(input) {
+  logMsg(`> ${input}`, 'log-cmd');
+  return parseAndRun(input, false);
+}
+
+function parseAndRun(input, showCmd) {
+  const raw = (typeof input === 'string') ? input.trim() : '';
+  if (!raw) return;
+  if (showCmd !== false) logMsg(`> ${raw}`, 'log-cmd');
+
+  if (raw === 'help') {
+    logMsg('Commands:', 'log-info');
+    logMsg('  feed N "text"   — feed text to node N (0-3)', 'log-info');
+    logMsg('  feed * "text"   — feed text to all nodes', 'log-info');
+    logMsg('  query N "text"  — query node N', 'log-info');
+    logMsg('  reset           — reset all nodes', 'log-info');
+    logMsg('  ring step       — force ring propagation step', 'log-info');
+    logMsg('  sleep N         — idle all nodes N steps', 'log-info');
+    logMsg('  status          — get ring status', 'log-info');
+    logMsg('  help            — show this help', 'log-info');
+    logMsg('Default (no prefix): auto-feed to node 0', 'log-info');
+    return;
+  }
+
+  if (raw === 'reset') return sendCommand('reset');
+  if (raw === 'status') return sendCommand('status');
+  if (raw === 'ring step') return sendCommand('ring/step');
+
+  // sleep N
+  const sleepMatch = raw.match(/^sleep\s+(\d+\.?\d*)$/);
+  if (sleepMatch) return sendCommand('idle', { steps: parseFloat(sleepMatch[1]) });
+
+  // feed N "text" or feed * "text"
+  const feedMatch = raw.match(/^feed\s+(\d+|\*)\s+["']?(.+?)["']?$/);
+  if (feedMatch) {
+    const target = feedMatch[1];
+    const text = feedMatch[2];
+    if (target === '*') {
+      // Feed to all nodes
+      return Promise.all([0,1,2,3].map(n => sendCommand(`feed/${n}`, { text })));
+    }
+    return sendCommand(`feed/${target}`, { text });
+  }
+
+  // query N "text"
+  const queryMatch = raw.match(/^query\s+(\d+)\s+["']?(.+?)["']?$/);
+  if (queryMatch) {
+    return sendCommand(`query/${queryMatch[1]}`, { text: queryMatch[2] });
+  }
+
+  // Default: auto-feed to node 0
+  const cleanText = raw.replace(/^["']|["']$/g, '');
+  logMsg(`(auto-feed node 0: "${cleanText}")`, 'log-info');
+  return sendCommand('feed/0', { text: cleanText });
+}
+
+cmdInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    const val = cmdInput.value;
+    cmdInput.value = '';
+    logMsg(`> ${val}`, 'log-cmd');
+    parseAndRun(val, false);
+  }
+});
+
+// --- Demo ---
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+document.getElementById('btn-demo').addEventListener('click', async function() {
+  this.disabled = true; this.textContent = 'Running...';
+  try {
+    await cmd('feed 0 "il gatto nero dorme sul divano"');
+    await sleep(3000);
+    await cmd('feed 2 "la pasta cuoce nella pentola"');
+    await sleep(3000);
+    // Wait for ring propagation
+    await sleep(5000);
+    await cmd('query 1 "cosa sai?"');
+    await sleep(3000);
+    await cmd('feed 1 "il bambino gioca nel parco"');
+    await sleep(3000);
+    await cmd('query 3 "cosa succede?"');
+    await sleep(5000);
+    await cmd('sleep 30');
+  } finally {
+    this.disabled = false; this.textContent = 'Demo';
+  }
+});
+
+// --- Init ---
+connectWS();
+logMsg('NOESIS Proto 2 Ring Dashboard ready. Type "help" for commands.', 'log-info');
+
+// Initial empty renders
+renderBars('concepts-bars', []);
+renderBars('metrics-bars', [
+  { label: 'Coerenza', value: 0, color: '#888' },
+  { label: 'Novita', value: 0, color: '#888' },
+  { label: 'Velocita', value: 0, color: '#888' },
+]);
+renderBars('scales-bars', [
+  { label: 'Fast', value: 0, color: '#4fc3f7' },
+  { label: 'Medium', value: 0, color: '#5c6bc0' },
+  { label: 'Slow', value: 0, color: '#ab47bc' },
+]);
+drawTimeline();
+</script>
+</body>
+</html>
