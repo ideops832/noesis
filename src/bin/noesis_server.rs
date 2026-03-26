@@ -10,6 +10,7 @@ use noesis::hdc::hypervector::HyperVector;
 use noesis::utils::corpus;
 use noesis::server::{state, websocket, api};
 use noesis::topology::ring::Ring;
+use noesis::topology::torus::Torus;
 
 fn main() {
     println!("NOESIS Proto 2 — Initializing...");
@@ -28,8 +29,10 @@ fn main() {
     // 2. Create Ring (4 nodes) AND a single field for Proto 1 backward compat
     let ms_config = MultiScaleConfig::default_for_dim(1024);
     let mut field = MultiScaleField::new(ms_config.clone(), 42);
-    let mut ring = Ring::new(ms_config, 4, 0.05, 42);
+    let mut ring = Ring::new(ms_config.clone(), 4, 0.05, 42);
     println!("  Ring: {} nodes, coupling_lr=0.05", ring.nodes.len());
+    let mut torus = Torus::new(4, 4, ms_config.clone(), 0.3, 1042);
+    println!("  Torus: {}x{} = {} nodes, coupling_lr=0.3", torus.rows, torus.cols, torus.nodes.len());
     println!("  MultiScaleField (Proto 1): 3 scales (fast, medium, slow)");
 
     // 3. Start servers
@@ -40,7 +43,8 @@ fn main() {
     println!("  REST API:  http://localhost:8081");
     println!("  Dashboard (Proto 1): http://localhost:8081/");
     println!("  Dashboard (Proto 2): http://localhost:8081/ring");
-    println!("\nNOESIS Proto 2 ready.\n");
+    println!("  Dashboard (Proto 3): http://localhost:8081/torus");
+    println!("\nNOESIS Proto 3 ready.\n");
 
     // 4. Main loop — Proto 1 state
     let mut narrative: Vec<state::NarrativePoint> = Vec::new();
@@ -102,6 +106,7 @@ fn main() {
                 api::ApiCommand::Reset { response_tx } => {
                     field.reset();
                     ring.reset_all();
+                    torus.reset_all();
                     total_steps = 0;
                     turn_count = 0;
                     narrative.clear();
@@ -116,9 +121,13 @@ fn main() {
                 api::ApiCommand::Status { response_tx } => {
                     let uptime = start_time.elapsed().as_secs();
                     let _ = response_tx.send(format!(
-                        r#"{{"engine":"noesis","version":"0.2.0","dim":1024,"neurons":20,"scales":3,"ring_nodes":{},"ring_tick":{},"vocab_size":{},"total_steps":{},"uptime_seconds":{}}}"#,
+                        r#"{{"engine":"noesis","version":"0.3.0","dim":1024,"neurons":20,"scales":3,"ring_nodes":{},"ring_tick":{},"torus_rows":{},"torus_cols":{},"torus_nodes":{},"torus_tick":{},"vocab_size":{},"total_steps":{},"uptime_seconds":{}}}"#,
                         ring.nodes.len(),
                         ring.tick,
+                        torus.rows,
+                        torus.cols,
+                        torus.nodes.len(),
+                        torus.tick,
                         composer.vocabulary.len(),
                         total_steps,
                         uptime
@@ -204,6 +213,93 @@ fn main() {
                         steps, ring.nodes.len()
                     ));
                 }
+
+                // --- Proto 3 torus commands ---
+                api::ApiCommand::FeedTorus { node_id, text, response_tx } => {
+                    if node_id >= torus.nodes.len() {
+                        let _ = response_tx.send(format!(
+                            r#"{{"status":"error","message":"node_id {} out of range (max {})"}}"#,
+                            node_id, torus.nodes.len() - 1
+                        ));
+                        continue;
+                    }
+                    let hv = composer.encode_sentence(&text);
+                    if let Some(hv) = hv {
+                        torus.feed_node(node_id, &hv);
+                        torus.nodes[node_id].last_event = Some(state::Event {
+                            event_type: "feed".into(),
+                            text: text.clone(),
+                            result: None,
+                        });
+                        let tokens: Vec<String> = tokenizer.tokenize(&text);
+                        let _ = response_tx.send(format!(
+                            r#"{{"status":"ok","node":{},"tokens":{:?},"turn":{}}}"#,
+                            node_id, tokens, torus.nodes[node_id].turn_count
+                        ));
+                    } else {
+                        let _ = response_tx.send(
+                            r#"{"status":"error","message":"empty encoding"}"#.into(),
+                        );
+                    }
+                }
+                api::ApiCommand::FeedTorusAll { text, response_tx } => {
+                    let hv = composer.encode_sentence(&text);
+                    if let Some(hv) = hv {
+                        torus.feed_all(&hv);
+                        let tokens: Vec<String> = tokenizer.tokenize(&text);
+                        let _ = response_tx.send(format!(
+                            r#"{{"status":"ok","nodes":{},"tokens":{:?}}}"#,
+                            torus.nodes.len(), tokens
+                        ));
+                    } else {
+                        let _ = response_tx.send(
+                            r#"{"status":"error","message":"empty encoding"}"#.into(),
+                        );
+                    }
+                }
+                api::ApiCommand::QueryTorus { node_id, text: _, response_tx } => {
+                    if node_id >= torus.nodes.len() {
+                        let _ = response_tx.send(format!(
+                            r#"{{"status":"error","message":"node_id {} out of range (max {})"}}"#,
+                            node_id, torus.nodes.len() - 1
+                        ));
+                        continue;
+                    }
+                    let salient = get_salient_field(&torus.nodes[node_id].field, &composer.vocabulary, 5);
+                    let results: Vec<String> = salient
+                        .iter()
+                        .map(|(w, s)| {
+                            format!(r#"{{"concept":"{}","similarity":{:.4}}}"#, w, s)
+                        })
+                        .collect();
+                    let _ = response_tx.send(format!(
+                        r#"{{"status":"ok","node":{},"results":[{}]}}"#,
+                        node_id, results.join(",")
+                    ));
+                }
+                api::ApiCommand::TorusStep { response_tx } => {
+                    torus.step_torus();
+                    let _ = response_tx.send(format!(
+                        r#"{{"status":"ok","tick":{}}}"#,
+                        torus.tick
+                    ));
+                }
+                api::ApiCommand::TorusCoupling { value, response_tx } => {
+                    torus.set_coupling(value);
+                    let _ = response_tx.send(format!(
+                        r#"{{"status":"ok","coupling":{:.4}}}"#,
+                        value
+                    ));
+                }
+                api::ApiCommand::TorusIdleAll { steps, response_tx } => {
+                    for _ in 0..steps {
+                        torus.idle_all();
+                    }
+                    let _ = response_tx.send(format!(
+                        r#"{{"status":"ok","idle_steps":{},"nodes":{}}}"#,
+                        steps, torus.nodes.len()
+                    ));
+                }
             }
         }
 
@@ -257,6 +353,16 @@ fn main() {
             }
         }
 
+        // --- Proto 3: Torus step + build torus frame ---
+        torus.step_torus();
+
+        // Update prev states for velocity tracking (torus)
+        for node in &mut torus.nodes {
+            node.update_prev_state();
+        }
+
+        let torus_frame = state::build_torus_frame(&torus, &composer.vocabulary);
+
         // --- Proto 2: Ring step + build ring frame ---
         ring.step_ring();
 
@@ -289,20 +395,24 @@ fn main() {
             .collect();
         let ring_frame = state::build_ring_frame(node_frames, &combined_states, ring.tick);
 
-        // Broadcast both frames via WebSocket (Proto 1 frame + ring frame wrapped)
+        // Broadcast all frames via WebSocket (Proto 1 + ring + torus)
         let proto1_json = serde_json::to_string(&frame).unwrap_or_default();
         let ring_json = serde_json::to_string(&ring_frame).unwrap_or_default();
+        let torus_json = serde_json::to_string(&torus_frame).unwrap_or_default();
         let combined_json = format!(
-            r#"{{"proto1":{},"ring":{}}}"#,
-            proto1_json, ring_json
+            r#"{{"proto1":{},"ring":{},"torus":{}}}"#,
+            proto1_json, ring_json, torus_json
         );
         websocket::broadcast(&ws_clients, &combined_json);
 
         // Save previous state (Proto 1)
         prev_state = Some(field.combined_state().clone());
         last_event = None;
-        // Clear ring node events
+        // Clear ring and torus node events
         for node in &mut ring.nodes {
+            node.last_event = None;
+        }
+        for node in &mut torus.nodes {
             node.last_event = None;
         }
 

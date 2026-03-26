@@ -16,6 +16,13 @@ pub enum ApiCommand {
     QueryNode { node_id: usize, text: String, response_tx: Sender<String> },
     RingStep { response_tx: Sender<String> },
     IdleAll { steps: usize, response_tx: Sender<String> },
+    // Proto 3 torus commands
+    FeedTorus { node_id: usize, text: String, response_tx: Sender<String> },
+    FeedTorusAll { text: String, response_tx: Sender<String> },
+    QueryTorus { node_id: usize, text: String, response_tx: Sender<String> },
+    TorusStep { response_tx: Sender<String> },
+    TorusCoupling { value: f32, response_tx: Sender<String> },
+    TorusIdleAll { steps: usize, response_tx: Sender<String> },
 }
 
 /// A parsed HTTP request.
@@ -178,6 +185,14 @@ fn extract_json_field(body: &str, field: &str) -> Option<String> {
 fn extract_json_int(body: &str, field: &str) -> Option<usize> {
     if let Ok(v) = serde_json::from_str::<serde_json::Value>(body) {
         return v.get(field)?.as_u64().map(|n| n as usize);
+    }
+    None
+}
+
+/// Extract a float field from a JSON body.
+fn extract_json_float(body: &str, field: &str) -> Option<f32> {
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(body) {
+        return v.get(field)?.as_f64().map(|n| n as f32);
     }
     None
 }
@@ -400,6 +415,139 @@ fn handle_request(stream: &mut TcpStream, cmd_tx: &Sender<ApiCommand>) {
             let steps = extract_json_int(&request.body, "steps").unwrap_or(10);
             let (response_tx, response_rx) = std::sync::mpsc::channel();
             let cmd = ApiCommand::IdleAll { steps, response_tx };
+            if cmd_tx.send(cmd).is_err() {
+                send_response(stream, 500, r#"{"error":"engine unavailable"}"#);
+                return;
+            }
+            match response_rx.recv_timeout(std::time::Duration::from_secs(10)) {
+                Ok(resp) => send_response(stream, 200, &resp),
+                Err(_) => send_response(stream, 500, r#"{"error":"timeout"}"#),
+            }
+        }
+
+        // --- Proto 3: Torus endpoints ---
+
+        // Serve torus dashboard
+        ("GET", "/torus") => {
+            send_file(stream, "static/dashboard_torus.html");
+        }
+
+        // POST /torus/feed/all — broadcast feed to all torus nodes
+        ("POST", "/torus/feed/all") => {
+            let text = match extract_json_field(&request.body, "text") {
+                Some(t) if !t.is_empty() => t,
+                _ => {
+                    send_response(stream, 400, r#"{"error":"missing 'text' field"}"#);
+                    return;
+                }
+            };
+            let (response_tx, response_rx) = std::sync::mpsc::channel();
+            let cmd = ApiCommand::FeedTorusAll { text, response_tx };
+            if cmd_tx.send(cmd).is_err() {
+                send_response(stream, 500, r#"{"error":"engine unavailable"}"#);
+                return;
+            }
+            match response_rx.recv_timeout(std::time::Duration::from_secs(10)) {
+                Ok(resp) => send_response(stream, 200, &resp),
+                Err(_) => send_response(stream, 500, r#"{"error":"timeout"}"#),
+            }
+        }
+
+        // POST /torus/feed/<node_id> — feed text to a specific torus node
+        ("POST", path) if path.starts_with("/torus/feed/") => {
+            let node_id_str = &path[12..];
+            let node_id: usize = match node_id_str.parse() {
+                Ok(id) => id,
+                Err(_) => {
+                    send_response(stream, 400, r#"{"error":"invalid node_id"}"#);
+                    return;
+                }
+            };
+            let text = match extract_json_field(&request.body, "text") {
+                Some(t) if !t.is_empty() => t,
+                _ => {
+                    send_response(stream, 400, r#"{"error":"missing 'text' field"}"#);
+                    return;
+                }
+            };
+            let (response_tx, response_rx) = std::sync::mpsc::channel();
+            let cmd = ApiCommand::FeedTorus { node_id, text, response_tx };
+            if cmd_tx.send(cmd).is_err() {
+                send_response(stream, 500, r#"{"error":"engine unavailable"}"#);
+                return;
+            }
+            match response_rx.recv_timeout(std::time::Duration::from_secs(10)) {
+                Ok(resp) => send_response(stream, 200, &resp),
+                Err(_) => send_response(stream, 500, r#"{"error":"timeout"}"#),
+            }
+        }
+
+        // POST /torus/query/<node_id> — query a specific torus node
+        ("POST", path) if path.starts_with("/torus/query/") => {
+            let node_id_str = &path[13..];
+            let node_id: usize = match node_id_str.parse() {
+                Ok(id) => id,
+                Err(_) => {
+                    send_response(stream, 400, r#"{"error":"invalid node_id"}"#);
+                    return;
+                }
+            };
+            let text = match extract_json_field(&request.body, "text") {
+                Some(t) => t,
+                None => String::new(),
+            };
+            let (response_tx, response_rx) = std::sync::mpsc::channel();
+            let cmd = ApiCommand::QueryTorus { node_id, text, response_tx };
+            if cmd_tx.send(cmd).is_err() {
+                send_response(stream, 500, r#"{"error":"engine unavailable"}"#);
+                return;
+            }
+            match response_rx.recv_timeout(std::time::Duration::from_secs(10)) {
+                Ok(resp) => send_response(stream, 200, &resp),
+                Err(_) => send_response(stream, 500, r#"{"error":"timeout"}"#),
+            }
+        }
+
+        // POST /torus/step — trigger a torus propagation step
+        ("POST", "/torus/step") => {
+            let (response_tx, response_rx) = std::sync::mpsc::channel();
+            let cmd = ApiCommand::TorusStep { response_tx };
+            if cmd_tx.send(cmd).is_err() {
+                send_response(stream, 500, r#"{"error":"engine unavailable"}"#);
+                return;
+            }
+            match response_rx.recv_timeout(std::time::Duration::from_secs(10)) {
+                Ok(resp) => send_response(stream, 200, &resp),
+                Err(_) => send_response(stream, 500, r#"{"error":"timeout"}"#),
+            }
+        }
+
+        // POST /torus/coupling — set torus coupling learning rate
+        ("POST", "/torus/coupling") => {
+            let value = match extract_json_float(&request.body, "value") {
+                Some(v) => v,
+                None => {
+                    send_response(stream, 400, r#"{"error":"missing 'value' field"}"#);
+                    return;
+                }
+            };
+            let (response_tx, response_rx) = std::sync::mpsc::channel();
+            let cmd = ApiCommand::TorusCoupling { value, response_tx };
+            if cmd_tx.send(cmd).is_err() {
+                send_response(stream, 500, r#"{"error":"engine unavailable"}"#);
+                return;
+            }
+            match response_rx.recv_timeout(std::time::Duration::from_secs(10)) {
+                Ok(resp) => send_response(stream, 200, &resp),
+                Err(_) => send_response(stream, 500, r#"{"error":"timeout"}"#),
+            }
+        }
+
+        // POST /torus/idle — idle all torus nodes
+        ("POST", "/torus/idle") => {
+            let steps = extract_json_int(&request.body, "steps").unwrap_or(10);
+            let (response_tx, response_rx) = std::sync::mpsc::channel();
+            let cmd = ApiCommand::TorusIdleAll { steps, response_tx };
             if cmd_tx.send(cmd).is_err() {
                 send_response(stream, 500, r#"{"error":"engine unavailable"}"#);
                 return;

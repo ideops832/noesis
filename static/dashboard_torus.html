@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOESIS Proto 3 — Torus</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#1a1a2e; color:#e0e0e0; font-family:system-ui,-apple-system,sans-serif; overflow:hidden; height:100vh; }
+#app { display:flex; flex-direction:column; height:100vh; max-width:1400px; margin:0 auto; padding:8px; gap:4px; }
+
+/* Header */
+#header { display:flex; justify-content:space-between; align-items:center; padding:10px 16px; border:1px solid #333; border-radius:6px; background:#16162a; }
+#header-left { display:flex; align-items:center; gap:20px; }
+#header h1 { font-size:18px; font-weight:700; letter-spacing:1px; }
+#coupling-wrap { display:flex; align-items:center; gap:8px; font-size:13px; }
+#coupling-slider { width:160px; accent-color:#7c4dff; cursor:pointer; }
+#coupling-val { font-variant-numeric:tabular-nums; width:36px; }
+#conn { display:flex; align-items:center; gap:8px; font-size:13px; }
+#conn-dot { width:10px; height:10px; border-radius:50%; background:#f44; transition:background .3s; }
+#conn-dot.on { background:#4caf50; }
+
+/* Main area */
+#main { display:flex; gap:4px; flex:1; min-height:0; }
+
+/* Left panel — grid canvas */
+#left { width:430px; min-width:430px; border:1px solid #333; border-radius:6px; background:#16162a; padding:10px; display:flex; align-items:center; justify-content:center; }
+#grid-canvas { cursor:pointer; }
+
+/* Right panel — node details */
+#right { flex:1; border:1px solid #333; border-radius:6px; background:#16162a; padding:16px; overflow-y:auto; display:flex; flex-direction:column; gap:14px; }
+.section-title { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:#888; margin-bottom:8px; }
+.bar-row { display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:13px; }
+.bar-label { width:90px; text-align:right; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.bar-track { flex:1; height:18px; background:#222; border-radius:3px; overflow:hidden; position:relative; }
+.bar-fill { height:100%; border-radius:3px; transition:width .3s ease, background .3s ease; min-width:0; }
+.bar-val { width:40px; text-align:right; font-size:12px; font-variant-numeric:tabular-nums; }
+#node-header { font-size:15px; font-weight:600; }
+#node-dominant { font-size:13px; color:#ccc; margin-top:2px; }
+.metric-line { font-size:13px; color:#ccc; margin-bottom:4px; }
+.cat-row { display:flex; align-items:center; gap:8px; margin-bottom:4px; font-size:13px; }
+.cat-swatch { width:14px; height:14px; border-radius:3px; flex-shrink:0; }
+.cat-label { width:70px; }
+.cat-bar { flex:1; height:14px; background:#222; border-radius:3px; overflow:hidden; }
+.cat-fill { height:100%; border-radius:3px; }
+.cat-count { width:60px; font-size:12px; color:#aaa; text-align:right; }
+
+/* Timeline */
+#timeline-wrap { border:1px solid #333; border-radius:6px; background:#16162a; padding:6px 6px 6px 36px; height:90px; min-height:70px; position:relative; }
+#timeline-labels { position:absolute; left:6px; top:6px; bottom:6px; width:28px; display:flex; flex-direction:column; justify-content:space-around; }
+.tl-label { font-size:10px; color:#888; font-weight:700; }
+#timeline-canvas { width:100%; height:100%; display:block; }
+
+/* Console */
+#console { border:1px solid #333; border-radius:6px; background:#16162a; display:flex; flex-direction:column; height:140px; min-height:110px; }
+#console-header { display:flex; justify-content:space-between; align-items:center; padding:6px 12px; border-bottom:1px solid #333; }
+#console-header span { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:#888; }
+#btn-demo { background:#2a2a4a; border:1px solid #555; color:#e0e0e0; padding:3px 12px; border-radius:4px; cursor:pointer; font-size:12px; }
+#btn-demo:hover { background:#3a3a5a; }
+#console-log { flex:1; overflow-y:auto; padding:6px 12px; font-family:'Courier New',monospace; font-size:12px; line-height:1.6; }
+.log-cmd { color:#4fc3f7; }
+.log-ok { color:#66bb6a; }
+.log-err { color:#ef5350; }
+.log-info { color:#aaa; }
+#console-input-wrap { display:flex; align-items:center; padding:4px 12px; border-top:1px solid #333; }
+#console-input-wrap::before { content:'> '; font-family:'Courier New',monospace; color:#4fc3f7; font-size:13px; }
+#cmd-input { flex:1; background:transparent; border:none; outline:none; color:#e0e0e0; font-family:'Courier New',monospace; font-size:13px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="header">
+    <div id="header-left">
+      <h1>NOESIS Proto 3 — Torus 4x4</h1>
+      <div id="coupling-wrap">
+        Coupling: <input type="range" id="coupling-slider" min="0" max="1" step="0.01" value="0.30">
+        <span id="coupling-val">0.30</span>
+      </div>
+    </div>
+    <div id="conn"><span id="conn-text">Disconnected</span><div id="conn-dot"></div></div>
+  </div>
+  <div id="main">
+    <div id="left">
+      <canvas id="grid-canvas" width="410" height="410"></canvas>
+    </div>
+    <div id="right">
+      <div>
+        <div id="node-header">Click a node to inspect</div>
+        <div id="node-dominant">---</div>
+      </div>
+      <div>
+        <div class="section-title">Top Concepts</div>
+        <div id="concepts-bars"></div>
+      </div>
+      <div>
+        <div class="section-title">Node Metrics</div>
+        <div id="node-metrics"></div>
+      </div>
+      <div>
+        <div class="section-title">Torus Metrics</div>
+        <div id="torus-metrics"></div>
+      </div>
+      <div>
+        <div class="section-title">Categories</div>
+        <div id="categories"></div>
+      </div>
+    </div>
+  </div>
+  <div id="timeline-wrap">
+    <div id="timeline-labels">
+      <span class="tl-label">R0</span>
+      <span class="tl-label">R1</span>
+      <span class="tl-label">R2</span>
+      <span class="tl-label">R3</span>
+    </div>
+    <canvas id="timeline-canvas"></canvas>
+  </div>
+  <div id="console">
+    <div id="console-header"><span>Console</span><button id="btn-demo">Demo</button></div>
+    <div id="console-log"></div>
+    <div id="console-input-wrap"><input id="cmd-input" placeholder="feed 0 &quot;il gatto dorme&quot;" autocomplete="off"></div>
+  </div>
+</div>
+<script>
+// ── Constants ──
+const COLORS = {
+  animali:{h:15,s:80,l:55}, cibo:{h:140,s:70,l:45},
+  lavoro:{h:220,s:75,l:55}, natura:{h:180,s:65,l:45},
+  famiglia:{h:45,s:85,l:55}, altro:{h:260,s:40,l:50},
+  nessuno:{h:0,s:0,l:40}
+};
+const API = 'http://localhost:8081/torus';
+const WS_URL = 'ws://localhost:8080';
+const TIMELINE_LEN = 300;
+const GRID_SIZE = 4;
+const CELL = 90, GAP = 4, GHOST = 4;
+
+// ── State ──
+let frame = null;
+let selectedNode = null;
+let ws = null;
+let reconnTimer = null;
+let timelineData = []; // array of frames (row-averaged category per row)
+let cmdHistory = [], cmdIdx = -1;
+
+// ── DOM refs ──
+const gridCanvas = document.getElementById('grid-canvas');
+const gridCtx = gridCanvas.getContext('2d');
+const tlCanvas = document.getElementById('timeline-canvas');
+const tlCtx = tlCanvas.getContext('2d');
+const logEl = document.getElementById('console-log');
+const cmdInput = document.getElementById('cmd-input');
+const connDot = document.getElementById('conn-dot');
+const connText = document.getElementById('conn-text');
+const couplingSlider = document.getElementById('coupling-slider');
+const couplingVal = document.getElementById('coupling-val');
+
+// ── Helpers ──
+function catColor(cat, sim, act) {
+  const c = COLORS[cat] || COLORS.nessuno;
+  return `hsl(${c.h}, ${Math.round(c.s * Math.max(0.15, sim || 0))}%, ${Math.round(c.l * Math.max(0.2, act || 0))}%)`;
+}
+function catColorPure(cat) {
+  const c = COLORS[cat] || COLORS.nessuno;
+  return `hsl(${c.h}, ${c.s}%, ${c.l}%)`;
+}
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function truncate(s, n) { return s && s.length > n ? s.slice(0, n) : (s || '---'); }
+
+// ── Logging ──
+function log(msg, cls='log-info') {
+  const d = document.createElement('div');
+  d.className = cls;
+  d.textContent = msg;
+  logEl.appendChild(d);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+// ── WebSocket ──
+function wsConnect() {
+  if (ws && ws.readyState <= 1) return;
+  ws = new WebSocket(WS_URL);
+  ws.onopen = () => { connDot.classList.add('on'); connText.textContent = 'Connected'; log('WebSocket connected', 'log-ok'); };
+  ws.onclose = () => { connDot.classList.remove('on'); connText.textContent = 'Disconnected'; scheduleReconnect(); };
+  ws.onerror = () => { ws.close(); };
+  ws.onmessage = (ev) => {
+    try {
+      const msg = JSON.parse(ev.data);
+      const torus = msg.torus || (msg.data && msg.data.torus);
+      if (torus) onFrame(torus);
+    } catch(e) { /* ignore */ }
+  };
+}
+function scheduleReconnect() {
+  if (reconnTimer) return;
+  reconnTimer = setTimeout(() => { reconnTimer = null; wsConnect(); }, 2000);
+}
+
+function onFrame(data) {
+  frame = data;
+  if (data.coupling !== undefined) {
+    couplingSlider.value = data.coupling;
+    couplingVal.textContent = data.coupling.toFixed(2);
+  }
+  pushTimeline(data);
+  drawGrid();
+  updateDetails();
+  drawTimeline();
+}
+
+// ── Grid Drawing ──
+function gridOrigin() {
+  const total = GHOST + GRID_SIZE * CELL + (GRID_SIZE - 1) * GAP + GHOST;
+  const ox = (gridCanvas.width - total) / 2 + GHOST;
+  const oy = (gridCanvas.height - total) / 2 + GHOST;
+  return { ox, oy };
+}
+function cellXY(col, row) {
+  const { ox, oy } = gridOrigin();
+  return { cx: ox + col * (CELL + GAP), cy: oy + row * (CELL + GAP) };
+}
+
+function drawGrid() {
+  if (!frame || !frame.nodes) return;
+  const ctx = gridCtx;
+  const W = gridCanvas.width, H = gridCanvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const { ox, oy } = gridOrigin();
+  const gridW = GRID_SIZE * CELL + (GRID_SIZE - 1) * GAP;
+  const gridH = gridW;
+
+  // Ghost borders (wrap-around indicators)
+  for (let c = 0; c < GRID_SIZE; c++) {
+    // Top ghost = bottom row
+    const botNode = frame.nodes[(GRID_SIZE - 1) * GRID_SIZE + c];
+    const topNode = frame.nodes[c];
+    // Bottom ghost = top row
+    const { cx: tx } = cellXY(c, 0);
+    const { cx: bx } = cellXY(c, GRID_SIZE - 1);
+    ctx.fillStyle = catColor(botNode.category, botNode.dominant_similarity, botNode.activation * 0.5);
+    ctx.fillRect(tx, oy - GHOST, CELL, GHOST);
+    ctx.fillStyle = catColor(topNode.category, topNode.dominant_similarity, topNode.activation * 0.5);
+    ctx.fillRect(bx, oy + gridH, CELL, GHOST);
+  }
+  for (let r = 0; r < GRID_SIZE; r++) {
+    // Left ghost = right col
+    const rightNode = frame.nodes[r * GRID_SIZE + GRID_SIZE - 1];
+    const leftNode = frame.nodes[r * GRID_SIZE];
+    const { cy: ly } = cellXY(0, r);
+    const { cy: ry } = cellXY(GRID_SIZE - 1, r);
+    ctx.fillStyle = catColor(rightNode.category, rightNode.dominant_similarity, rightNode.activation * 0.5);
+    ctx.fillRect(ox - GHOST, ly, GHOST, CELL);
+    ctx.fillStyle = catColor(leftNode.category, leftNode.dominant_similarity, leftNode.activation * 0.5);
+    ctx.fillRect(ox + gridW, ry, GHOST, CELL);
+  }
+
+  // Cells
+  for (const node of frame.nodes) {
+    const r = node.y !== undefined ? node.y : Math.floor(node.id / GRID_SIZE);
+    const c = node.x !== undefined ? node.x : node.id % GRID_SIZE;
+    const { cx, cy } = cellXY(c, r);
+
+    // Fill
+    ctx.fillStyle = catColor(node.category, node.dominant_similarity, node.activation);
+    ctx.fillRect(cx, cy, CELL, CELL);
+
+    // Border based on neighbor_agreement
+    const agr = node.neighbor_agreement || 0;
+    if (agr > 0.5) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+      ctx.lineWidth = 1;
+    } else if (agr < 0.3) {
+      ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+      ctx.lineWidth = 3;
+    } else {
+      ctx.strokeStyle = 'rgba(100,100,100,0.4)';
+      ctx.lineWidth = 1;
+    }
+    ctx.strokeRect(cx, cy, CELL, CELL);
+
+    // Selected highlight
+    if (selectedNode === node.id) {
+      ctx.save();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(cx - 1, cy - 1, CELL + 2, CELL + 2);
+      ctx.restore();
+    }
+
+    // Text
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    // ID
+    ctx.font = '10px system-ui';
+    ctx.fillText('N' + node.id, cx + CELL / 2, cy + 4);
+    // Dominant concept
+    ctx.font = 'bold 13px system-ui';
+    ctx.fillText(truncate(node.dominant_concept, 7), cx + CELL / 2, cy + 32);
+    // Similarity
+    ctx.font = '11px system-ui';
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.fillText((node.dominant_similarity || 0).toFixed(2), cx + CELL / 2, cy + 52);
+    // Category small
+    ctx.font = '9px system-ui';
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.fillText(truncate(node.category, 7), cx + CELL / 2, cy + 72);
+  }
+}
+
+// Click handler
+gridCanvas.addEventListener('click', (e) => {
+  if (!frame) return;
+  const rect = gridCanvas.getBoundingClientRect();
+  const mx = (e.clientX - rect.left) * (gridCanvas.width / rect.width);
+  const my = (e.clientY - rect.top) * (gridCanvas.height / rect.height);
+  for (const node of frame.nodes) {
+    const r = node.y !== undefined ? node.y : Math.floor(node.id / GRID_SIZE);
+    const c = node.x !== undefined ? node.x : node.id % GRID_SIZE;
+    const { cx, cy } = cellXY(c, r);
+    if (mx >= cx && mx <= cx + CELL && my >= cy && my <= cy + CELL) {
+      selectedNode = node.id;
+      drawGrid();
+      updateDetails();
+      return;
+    }
+  }
+});
+
+// ── Detail Panel ──
+function updateDetails() {
+  if (!frame) return;
+  const node = selectedNode !== null ? frame.nodes.find(n => n.id === selectedNode) : null;
+
+  // Node info
+  const hdr = document.getElementById('node-header');
+  const dom = document.getElementById('node-dominant');
+  if (node) {
+    hdr.textContent = `Node ${node.id} Details`;
+    dom.textContent = `Dominant: ${node.dominant_concept || '---'} (${(node.dominant_similarity || 0).toFixed(2)}) ${node.category || ''}`;
+  } else {
+    hdr.textContent = 'Click a node to inspect';
+    dom.textContent = '---';
+  }
+
+  // Top concepts bars
+  const cBars = document.getElementById('concepts-bars');
+  cBars.innerHTML = '';
+  if (node && node.top_concepts) {
+    node.top_concepts.slice(0, 6).forEach(tc => {
+      const name = tc.concept || tc.word || tc[0] || '?';
+      const val = tc.similarity || tc.score || tc[1] || 0;
+      cBars.innerHTML += barHTML(name, val, catColorPure(node.category));
+    });
+  }
+
+  // Node metrics
+  const nm = document.getElementById('node-metrics');
+  nm.innerHTML = '';
+  if (node) {
+    nm.innerHTML += barHTML('Agreement', node.neighbor_agreement || 0, '#4fc3f7');
+    nm.innerHTML += barHTML('Activation', node.activation || 0, '#ff9800');
+    nm.innerHTML += barHTML('Velocity', node.velocity || 0, '#ab47bc');
+  }
+
+  // Torus metrics
+  const tm = document.getElementById('torus-metrics');
+  tm.innerHTML = '';
+  if (frame.metrics) {
+    const m = frame.metrics;
+    tm.innerHTML += barHTML('Consensus', m.consensus || 0, '#66bb6a');
+    tm.innerHTML += barHTML('Spatial', m.spatial_coherence || 0, '#29b6f6');
+    tm.innerHTML += `<div class="metric-line">Zones: ${m.num_zones || 0}</div>`;
+    tm.innerHTML += barHTML('Topographic', m.topographic_quality || 0, '#ffa726');
+  }
+
+  // Categories
+  const cats = document.getElementById('categories');
+  cats.innerHTML = '';
+  if (frame.metrics && frame.metrics.category_distribution) {
+    const maxCount = Math.max(1, ...frame.metrics.category_distribution.map(c => c.count));
+    frame.metrics.category_distribution.forEach(cd => {
+      const color = catColorPure(cd.category);
+      const pct = (cd.count / 16 * 100).toFixed(0);
+      cats.innerHTML += `<div class="cat-row">
+        <div class="cat-swatch" style="background:${color}"></div>
+        <span class="cat-label">${cd.category}</span>
+        <div class="cat-bar"><div class="cat-fill" style="width:${pct}%;background:${color}"></div></div>
+        <span class="cat-count">${cd.count} nodes</span>
+      </div>`;
+    });
+  }
+}
+
+function barHTML(label, val, color) {
+  const pct = clamp(val, 0, 1) * 100;
+  return `<div class="bar-row">
+    <span class="bar-label">${label}</span>
+    <div class="bar-track"><div class="bar-fill" style="width:${pct.toFixed(1)}%;background:${color}"></div></div>
+    <span class="bar-val">${val.toFixed(2)}</span>
+  </div>`;
+}
+
+// ── Timeline ──
+function pushTimeline(data) {
+  if (!data.nodes) return;
+  // Compute average category color per row
+  const entry = [];
+  for (let r = 0; r < GRID_SIZE; r++) {
+    let hSum = 0, sSum = 0, lSum = 0, count = 0;
+    for (let c = 0; c < GRID_SIZE; c++) {
+      const node = data.nodes[r * GRID_SIZE + c];
+      if (!node) continue;
+      const col = COLORS[node.category] || COLORS.nessuno;
+      const act = Math.max(0.2, node.activation || 0);
+      const sim = Math.max(0.15, node.dominant_similarity || 0);
+      hSum += col.h; sSum += col.s * sim; lSum += col.l * act; count++;
+    }
+    entry.push(count ? { h: hSum / count, s: sSum / count, l: lSum / count } : { h: 0, s: 0, l: 30 });
+  }
+  timelineData.push(entry);
+  if (timelineData.length > TIMELINE_LEN) timelineData.shift();
+}
+
+function drawTimeline() {
+  const c = tlCanvas;
+  const parent = c.parentElement;
+  c.width = parent.clientWidth - 36;
+  c.height = parent.clientHeight - 12;
+  const ctx = tlCtx;
+  ctx.clearRect(0, 0, c.width, c.height);
+  const len = timelineData.length;
+  if (len === 0) return;
+  const rowH = c.height / GRID_SIZE;
+  const colW = Math.max(1, c.width / TIMELINE_LEN);
+  for (let r = 0; r < GRID_SIZE; r++) {
+    for (let i = 0; i < len; i++) {
+      const e = timelineData[i][r];
+      ctx.fillStyle = `hsl(${e.h}, ${e.s}%, ${e.l}%)`;
+      const x = (TIMELINE_LEN - len + i) * colW;
+      ctx.fillRect(x, r * rowH, colW + 0.5, rowH - 1);
+    }
+  }
+}
+
+// ── Coupling Slider ──
+let couplingTimeout = null;
+couplingSlider.addEventListener('input', () => {
+  couplingVal.textContent = parseFloat(couplingSlider.value).toFixed(2);
+  clearTimeout(couplingTimeout);
+  couplingTimeout = setTimeout(() => {
+    const val = parseFloat(couplingSlider.value);
+    fetch(`${API}/coupling`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ coupling: val }) })
+      .then(r => r.json()).then(d => log(`Coupling -> ${val.toFixed(2)}`, 'log-ok'))
+      .catch(e => log('Coupling error: ' + e, 'log-err'));
+  }, 200);
+});
+
+// ── Console Commands ──
+async function execCmd(raw) {
+  const text = raw.trim();
+  if (!text) return;
+  cmdHistory.push(text);
+  cmdIdx = cmdHistory.length;
+  log('> ' + text, 'log-cmd');
+
+  // Parse command
+  const feedMatch = text.match(/^feed\s+(all|\d+)\s+"([^"]*)"$/i) || text.match(/^feed\s+(all|\d+)\s+(.+)$/i);
+  const queryMatch = text.match(/^query\s+(\d+)\s+"([^"]*)"$/i) || text.match(/^query\s+(\d+)\s+(.+)$/i);
+  const coupMatch = text.match(/^coupling\s+([\d.]+)$/i);
+  const sleepMatch = text.match(/^sleep\s+(\d+)$/i);
+
+  try {
+    if (text === 'reset') {
+      const r = await fetch('http://localhost:8081/reset', { method: 'POST' });
+      const d = await r.json();
+      log('Reset: ' + JSON.stringify(d), 'log-ok');
+    } else if (text === 'topo') {
+      if (frame && frame.metrics) {
+        const m = frame.metrics;
+        log(`Consensus: ${(m.consensus||0).toFixed(3)}  Spatial: ${(m.spatial_coherence||0).toFixed(3)}  Zones: ${m.num_zones||0}  Topo: ${(m.topographic_quality||0).toFixed(3)}`, 'log-info');
+      } else {
+        log('No torus data yet', 'log-info');
+      }
+    } else if (text === 'zones') {
+      if (frame && frame.metrics) {
+        log(`Zones: ${frame.metrics.num_zones || 0}`, 'log-info');
+        if (frame.metrics.category_distribution) {
+          frame.metrics.category_distribution.forEach(c => log(`  ${c.category}: ${c.count} nodes`, 'log-info'));
+        }
+      } else {
+        log('No torus data yet', 'log-info');
+      }
+    } else if (text === 'demo') {
+      runDemo();
+    } else if (feedMatch) {
+      const target = feedMatch[1];
+      const sentence = feedMatch[2];
+      const url = target.toLowerCase() === 'all' ? `${API}/feed/all` : `${API}/feed/${target}`;
+      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: sentence }) });
+      const d = await r.json();
+      log(`Feed ${target}: ${JSON.stringify(d)}`, 'log-ok');
+    } else if (queryMatch) {
+      const nodeId = queryMatch[1];
+      const sentence = queryMatch[2];
+      const r = await fetch(`${API}/query/${nodeId}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: sentence }) });
+      const d = await r.json();
+      log(`Query ${nodeId}: ${JSON.stringify(d)}`, 'log-ok');
+    } else if (coupMatch) {
+      const val = parseFloat(coupMatch[1]);
+      couplingSlider.value = val;
+      couplingVal.textContent = val.toFixed(2);
+      const r = await fetch(`${API}/coupling`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ coupling: val }) });
+      const d = await r.json();
+      log(`Coupling -> ${val.toFixed(2)}: ${JSON.stringify(d)}`, 'log-ok');
+    } else if (sleepMatch) {
+      const n = parseInt(sleepMatch[1]);
+      const r = await fetch(`${API}/idle`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticks: n }) });
+      const d = await r.json();
+      log(`Sleep ${n}: ${JSON.stringify(d)}`, 'log-ok');
+    } else {
+      // Default: feed to node 0
+      const r = await fetch(`${API}/feed/0`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+      const d = await r.json();
+      log(`Feed 0: ${JSON.stringify(d)}`, 'log-ok');
+    }
+  } catch (e) {
+    log('Error: ' + e.message, 'log-err');
+  }
+}
+
+// Command input
+cmdInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    execCmd(cmdInput.value);
+    cmdInput.value = '';
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (cmdIdx > 0) { cmdIdx--; cmdInput.value = cmdHistory[cmdIdx]; }
+  } else if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (cmdIdx < cmdHistory.length - 1) { cmdIdx++; cmdInput.value = cmdHistory[cmdIdx]; }
+    else { cmdIdx = cmdHistory.length; cmdInput.value = ''; }
+  }
+});
+
+// ── Demo ──
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function cmd(text) {
+  await execCmd(text);
+}
+
+async function runDemo() {
+  log('--- Demo start ---', 'log-info');
+  await cmd('reset');
+  await sleep(2000);
+  // Phase 1: Wave
+  log('Phase 1: Single wave', 'log-info');
+  await cmd('feed 0 "il gatto dorme sul divano"');
+  await sleep(6000);
+  // Phase 2: Two zones
+  log('Phase 2: Two zones', 'log-info');
+  await cmd('reset');
+  await sleep(1000);
+  await cmd('feed 0 "il gatto dorme"');
+  await cmd('feed 10 "la pasta cuoce"');
+  await sleep(8000);
+  await cmd('topo');
+  // Phase 3: Four zones
+  log('Phase 3: Four zones', 'log-info');
+  await cmd('reset');
+  await sleep(1000);
+  await cmd('feed 0 "il gatto dorme"');
+  await cmd('feed 3 "la pasta cuoce"');
+  await cmd('feed 12 "il sole splende"');
+  await cmd('feed 15 "il programmatore scrive"');
+  await sleep(10000);
+  await cmd('topo');
+  log('--- Demo end ---', 'log-info');
+}
+
+document.getElementById('btn-demo').addEventListener('click', runDemo);
+
+// ── Init ──
+wsConnect();
+log('NOESIS Proto 3 Torus Dashboard ready', 'log-info');
+log('Commands: feed N "text", feed all "text", query N "text", coupling VAL, reset, topo, zones, sleep N, demo', 'log-info');
+</script>
+</body>
+</html>

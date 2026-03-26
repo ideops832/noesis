@@ -239,6 +239,183 @@ pub fn build_ring_frame(
     }
 }
 
+// --- Proto 3: Torus frames ---
+
+#[derive(Serialize, Clone)]
+pub struct TorusFrame {
+    pub timestamp_ms: u64,
+    pub tick: u64,
+    pub rows: usize,
+    pub cols: usize,
+    pub coupling: f32,
+    pub nodes: Vec<TorusNodeFrame>,
+    pub metrics: TorusMetrics,
+}
+
+#[derive(Serialize, Clone)]
+pub struct TorusNodeFrame {
+    pub id: usize,
+    pub x: usize,
+    pub y: usize,
+    pub dominant_concept: String,
+    pub dominant_similarity: f32,
+    pub category: String,
+    pub activation: f32,
+    pub velocity: f32,
+    pub neighbor_agreement: f32,
+    pub top_concepts: Vec<ConceptScore>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct TorusMetrics {
+    pub consensus: f32,
+    pub spatial_coherence: f32,
+    pub num_zones: usize,
+    pub topographic_quality: f32,
+    pub category_distribution: Vec<CategoryCount>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct CategoryCount {
+    pub category: String,
+    pub count: usize,
+}
+
+/// Build a torus frame from torus state.
+pub fn build_torus_frame(
+    torus: &crate::topology::torus::Torus,
+    vocab: &Vocabulary,
+) -> TorusFrame {
+    use crate::hdc::real::RealHV;
+
+    let timestamp_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+
+    let n = torus.nodes.len();
+
+    // Collect combined states for neighbor agreement computation
+    let states: Vec<&RealHV> = torus.nodes.iter()
+        .map(|node| node.field.combined_state())
+        .collect();
+
+    // Build per-node frames
+    let mut node_frames = Vec::with_capacity(n);
+    let mut category_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut total_dominant_sim = 0.0f32;
+    let mut active_nodes = 0u32;
+
+    for i in 0..n {
+        let node = &torus.nodes[i];
+        let (x, y) = torus.position_of(i);
+
+        // Get salient concepts for this node
+        let state = node.field.combined_state();
+        let top_concepts = if state.norm() > 1e-8 {
+            let mut sims: Vec<(String, f32)> = vocab.words.iter()
+                .map(|(word, hv)| (word.clone(), RealHV::cosine_similarity(state, hv)))
+                .collect();
+            sims.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            sims.truncate(5);
+            sims.into_iter()
+                .map(|(word, sim)| {
+                    let cat = categorize_word(&word, vocab);
+                    ConceptScore { word, similarity: sim, category: cat }
+                })
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+
+        let (dominant_concept, dominant_similarity) = top_concepts.first()
+            .map(|c| (c.word.clone(), c.similarity))
+            .unwrap_or_else(|| ("(vuoto)".to_string(), 0.0));
+
+        let category = if !top_concepts.is_empty() {
+            top_concepts[0].category.clone()
+        } else {
+            "altro".to_string()
+        };
+
+        // Activation: combined norm
+        let activation = state.norm().min(1.0);
+
+        // Velocity
+        let velocity = node.velocity();
+
+        // Neighbor agreement: avg cosine similarity with 4 neighbors
+        let neighbors = torus.neighbors_of(i);
+        let mut neighbor_sim_sum = 0.0f32;
+        let mut neighbor_count = 0u32;
+        if state.norm() > 1e-8 {
+            for &nb in &neighbors {
+                if states[nb].norm() > 1e-8 {
+                    neighbor_sim_sum += RealHV::cosine_similarity(state, states[nb]);
+                    neighbor_count += 1;
+                }
+            }
+        }
+        let neighbor_agreement = if neighbor_count > 0 {
+            neighbor_sim_sum / neighbor_count as f32
+        } else {
+            0.0
+        };
+
+        // Track category distribution
+        *category_counts.entry(category.clone()).or_insert(0) += 1;
+
+        if dominant_similarity > 0.01 {
+            total_dominant_sim += dominant_similarity;
+            active_nodes += 1;
+        }
+
+        node_frames.push(TorusNodeFrame {
+            id: i,
+            x,
+            y,
+            dominant_concept,
+            dominant_similarity,
+            category,
+            activation,
+            velocity,
+            neighbor_agreement,
+            top_concepts,
+        });
+    }
+
+    // Build category distribution
+    let mut category_distribution: Vec<CategoryCount> = category_counts.into_iter()
+        .map(|(category, count)| CategoryCount { category, count })
+        .collect();
+    category_distribution.sort_by(|a, b| b.count.cmp(&a.count));
+
+    // Consensus: average dominant similarity across active nodes
+    let consensus = if active_nodes > 0 {
+        total_dominant_sim / active_nodes as f32
+    } else {
+        0.0
+    };
+
+    let metrics = TorusMetrics {
+        consensus,
+        spatial_coherence: torus.spatial_coherence,
+        num_zones: torus.num_zones,
+        topographic_quality: torus.topographic_quality,
+        category_distribution,
+    };
+
+    TorusFrame {
+        timestamp_ms,
+        tick: torus.tick,
+        rows: torus.rows,
+        cols: torus.cols,
+        coupling: torus.coupling_lr,
+        nodes: node_frames,
+        metrics,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
