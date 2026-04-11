@@ -12,3 +12,4 @@ pub mod temporal_binding;
 pub mod training;
 pub mod multiscale;
 pub mod volition;
+pub mod deliberation;

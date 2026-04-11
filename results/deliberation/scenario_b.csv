@@ -1,0 +1,4 @@
+experiment,candidate_source,accuracy,avg_cycles,avg_final_score,n_trials
+scenarioB,attraction_only,1.000,1.550,0.922,20
+scenarioB,vocabulary_only,1.000,2.000,0.041,20
+scenarioB,combined,1.000,1.550,0.922,20
