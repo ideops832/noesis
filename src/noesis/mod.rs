@@ -11,3 +11,4 @@ pub mod memory_dynamics;
 pub mod temporal_binding;
 pub mod training;
 pub mod multiscale;
+pub mod volition;
