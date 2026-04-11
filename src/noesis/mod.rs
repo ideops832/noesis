@@ -13,3 +13,5 @@ pub mod training;
 pub mod multiscale;
 pub mod volition;
 pub mod deliberation;
+pub mod meta_field;
+pub mod self_model;

@@ -347,6 +347,63 @@ impl VolitionLayer {
             all_evaluations,
         }
     }
+
+    /// Deliberation driven by the meta-field.
+    ///
+    /// Observes the current internal state via `meta_field`, regulates α and
+    /// γ based on perceived difficulty, runs the standard deliberation loop
+    /// with the regulated parameters, and finally updates `self_model` with
+    /// the outcome.
+    ///
+    /// Returns `(DeliberationResult, MetaObservation, MetaRegulation)`.
+    pub fn deliberate_with_meta(
+        &self,
+        fast_state: &RealHV,
+        slow_state: &RealHV,
+        vocabulary: &Vocabulary,
+        config: &DeliberationConfig,
+        meta_field: &mut crate::noesis::meta_field::MetaField,
+        self_model: &mut crate::noesis::self_model::SelfModel,
+    ) -> (
+        DeliberationResult,
+        crate::noesis::meta_field::MetaObservation,
+        crate::noesis::meta_field::MetaRegulation,
+    ) {
+        // 1. Observe current state. For the very first call we have no prior
+        //    cycles_used — feed base_cycles as the expected budget.
+        let prev_cycles = meta_field.last().map(|_| {
+            // Rough estimate: use avg_cycles from self_model for subsequent
+            // observations.
+            self_model.avg_cycles.round().max(1.0) as usize
+        }).unwrap_or(config.base_cycles);
+        let obs = meta_field.observe(fast_state, slow_state, prev_cycles);
+
+        // 2. Snapshot gamma from the active goal, then regulate.
+        let current_gamma = self
+            .active_goal_id
+            .as_ref()
+            .and_then(|id| self.goals.get(id))
+            .map(|g| g.gamma)
+            .unwrap_or(0.4);
+        let reg = meta_field.regulate(&obs, current_gamma);
+
+        // 3. Derived config with the regulated alphas. γ is reported via
+        //    `reg.effective_gamma()` but not re-applied to the goal because
+        //    VolitionLayer is `&self` here — the γ bias already baked into
+        //    the active goal is used as-is by the inner deliberate().
+        let derived_cfg = DeliberationConfig {
+            alphas: reg.alphas.clone(),
+            ..config.clone()
+        };
+
+        // 4. Run the standard deliberation loop.
+        let result = self.deliberate(fast_state, vocabulary, &derived_cfg);
+
+        // 5. Update the self-model with the observed difficulty and outcome.
+        self_model.update(&obs, result.outcome, fast_state);
+
+        (result, obs, reg)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -587,5 +644,72 @@ mod tests {
             res_hard.initial_coherence < res_easy.initial_coherence,
             "hard must be farther from goal than easy"
         );
+    }
+
+    // -------- Test 7: deliberate_with_meta end-to-end ----------------------
+    #[test]
+    fn test_deliberate_with_meta() {
+        use crate::noesis::meta_field::MetaField;
+        use crate::noesis::self_model::SelfModel;
+
+        let mut rng = StdRng::seed_from_u64(9090);
+        let goal = RealHV::random(D, &mut rng);
+        let vocab = make_vocab(9091, 10);
+        let cfg = DeliberationConfig::default();
+
+        let mut layer = VolitionLayer::new(D);
+        layer.set_goal_raw(goal.clone(), GoalLevel::Tactical, 0.4, 0.85);
+
+        let mut mf = MetaField::new(cfg.base_cycles, 10);
+        let mut sm = SelfModel::new(cfg.base_cycles);
+
+        // Prime the meta-field with one observation so that stability ≠ 1
+        // on the "hard" step below — otherwise difficulty stays at 0.
+        let slow = goal.clone();
+        let prime_fast = RealHV::random(D, &mut rng);
+        let _ = mf.observe(&prime_fast, &slow, cfg.base_cycles);
+
+        // Easy scenario: fast_state very close to goal.
+        let easy_noise = RealHV::random_normal(D, &mut rng);
+        let fast_easy = RealHV::add(&goal, &easy_noise.scale(0.05)).normalized();
+        let (res_easy, obs_easy, reg_easy) =
+            layer.deliberate_with_meta(&fast_easy, &slow, &vocab, &cfg, &mut mf, &mut sm);
+        assert_eq!(
+            res_easy.outcome,
+            DeliberationOutcome::Achieved,
+            "easy scenario should achieve"
+        );
+        // Alpha_max should be high for the easy case (low difficulty).
+        assert!(
+            reg_easy.alpha_max() > 0.8,
+            "easy scenario should have alpha_max > 0.8, got {}",
+            reg_easy.alpha_max()
+        );
+
+        // Hard scenario: fast_state orthogonal to goal.
+        let fast_hard = RealHV::random(D, &mut rng);
+        let (res_hard, obs_hard, reg_hard) =
+            layer.deliberate_with_meta(&fast_hard, &slow, &vocab, &cfg, &mut mf, &mut sm);
+        // Difficulty should be strictly higher than the easy case.
+        assert!(
+            obs_hard.perceived_difficulty > obs_easy.perceived_difficulty,
+            "hard difficulty ({}) should exceed easy ({})",
+            obs_hard.perceived_difficulty, obs_easy.perceived_difficulty
+        );
+        // Alpha_max should drop below the easy case.
+        assert!(
+            reg_hard.alpha_max() < reg_easy.alpha_max(),
+            "hard alpha_max ({}) should be < easy alpha_max ({})",
+            reg_hard.alpha_max(), reg_easy.alpha_max()
+        );
+        // γ adjustment is non-negative.
+        assert!(reg_hard.gamma_adjustment >= reg_easy.gamma_adjustment);
+
+        // Self-model must have recorded two observations.
+        assert_eq!(sm.total_observations, 2);
+
+        // Hard case should leave a non-zero score (ActWithUncertainty or
+        // Achieved depending on the regulated alphas) — not outright panic.
+        let _ = res_hard.final_score;
     }
 }

@@ -14,3 +14,4 @@ pub mod exp_optimization;
 pub mod exp_d_scaling;
 pub mod exp_volition;
 pub mod exp_deliberation;
+pub mod exp_metacognition;
