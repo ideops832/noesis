@@ -8,3 +8,4 @@ pub mod vocabulary;
 pub mod composer;
 pub mod context;
 pub mod grounding;
+pub mod corpus_loader;

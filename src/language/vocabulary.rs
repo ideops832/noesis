@@ -422,6 +422,49 @@ impl Vocabulary {
     pub fn is_empty(&self) -> bool {
         self.words.is_empty()
     }
+
+    /// Heuristic: considered "trained on a real corpus" if at least 1000
+    /// words have been learned (the hardcoded Italian corpus produces ~300).
+    pub fn is_trained(&self) -> bool {
+        self.words.len() >= 1000
+    }
+
+    /// Serialize vocabulary (dim + word→HV map) to a JSON file.
+    /// The RNG is not serialized — a fresh one is seeded on load.
+    pub fn save(&self, path: &std::path::Path) -> std::io::Result<()> {
+        let snapshot = VocabularySnapshot {
+            dim: self.dim,
+            words: self.words.clone(),
+        };
+        let json = serde_json::to_string(&snapshot).map_err(|e| {
+            std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())
+        })?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(path, json)
+    }
+
+    /// Deserialize vocabulary from a JSON file written by `save()`.
+    pub fn load(path: &std::path::Path) -> std::io::Result<Self> {
+        let bytes = std::fs::read(path)?;
+        let snapshot: VocabularySnapshot = serde_json::from_slice(&bytes).map_err(|e| {
+            std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())
+        })?;
+        Ok(Vocabulary {
+            dim: snapshot.dim,
+            words: snapshot.words,
+            // RNG seed is arbitrary here: post-load the vocabulary is
+            // generally used read-only.
+            rng: StdRng::seed_from_u64(0xDEAD_BEEF),
+        })
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct VocabularySnapshot {
+    dim: usize,
+    words: HashMap<String, RealHV>,
 }
 
 #[cfg(test)]

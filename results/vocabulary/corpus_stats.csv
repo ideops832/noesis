@@ -1,0 +1,8 @@
+metric,value
+total_tokens,783508
+unique_words,41549
+words_learned,10000
+words_discarded,26883
+avg_context_richness,4.585
+vocabulary_size_final,10000
+training_time_seconds,28.438

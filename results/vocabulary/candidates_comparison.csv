@@ -1,0 +1,4 @@
+source,accuracy,avg_cycles,avg_score,trials
+attraction_only,1.000,2.00,0.924,20
+vocabulary_only,1.000,2.25,0.056,20
+combined,1.000,2.00,0.925,20

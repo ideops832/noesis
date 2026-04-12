@@ -1,0 +1,7 @@
+pair_type,word1,word2,similarity,in_vocab
+close,life,death,-0.0079,true
+close,dark,night,-0.0117,true
+close,river,water,0.0054,true
+close,ship,sea,0.0200,true
+distant,whale,prison,0.0323,true
+distant,blood,river,0.0176,true
